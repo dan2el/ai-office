@@ -278,6 +278,35 @@ function idleMotion(position: Position): Motion {
   return { type: 'stopped', reason: 'idle', pose: { position, orientation: 270 } };
 }
 
+function hashString(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+// Deterministically bind each project (cwd) to an office character index, so the
+// same project always keeps the same dedicated member. Callers pass running
+// projects first so active work always claims a desk.
+function assignProjectsToCharacters(cwds: string[], numCharacters: number) {
+  const map = new Map<string, number>();
+  const used = new Set<number>();
+  for (const cwd of cwds) {
+    if (used.size >= numCharacters) break;
+    let index = hashString(cwd) % numCharacters;
+    let tries = 0;
+    while (used.has(index) && tries < numCharacters) {
+      index = (index + 1) % numCharacters;
+      tries += 1;
+    }
+    if (used.has(index)) continue;
+    used.add(index);
+    map.set(cwd, index);
+  }
+  return map;
+}
+
 function sortSessionsForOffice(sessions: AgentSession[]) {
   const rank = (status: string) =>
     status === 'running' ? 0 : status === 'starting' ? 1 : status === 'idle' ? 2 : 3;
@@ -379,10 +408,11 @@ export function createLocalWorld(
     return { ...worldShell, playerStates, messages: { [conversationId]: messages } };
   }
 
-  // Live mode: assign each character to a real Codex/Claude session.
-  // Only top-level sessions become characters; subagents ride along as pets.
+  // Live mode: each project (cwd) gets one dedicated office character.
   const sorted = sortSessionsForOffice(agentSessions);
   const mainSessions = sorted.filter((session) => !session.parentThreadId);
+
+  // Subagents grouped by parent session id (rendered as pets).
   const subsByParent = new Map<string, AgentSession[]>();
   for (const session of sorted) {
     if (!session.parentThreadId) continue;
@@ -390,6 +420,24 @@ export function createLocalWorld(
     list.push(session);
     subsByParent.set(session.parentThreadId, list);
   }
+
+  // Group top-level sessions by project, then bind each project to a character.
+  const byProject = new Map<string, AgentSession[]>();
+  for (const session of mainSessions) {
+    const key = session.cwd || 'unknown';
+    const list = byProject.get(key) ?? [];
+    list.push(session);
+    byProject.set(key, list);
+  }
+  // Running projects first (always get a desk), then deterministic by cwd.
+  const projectCwds = [...byProject.keys()].sort((a, b) => {
+    const ra = (byProject.get(a) ?? []).some((s) => s.status === 'running') ? 0 : 1;
+    const rb = (byProject.get(b) ?? []).some((s) => s.status === 'running') ? 0 : 1;
+    return ra - rb || a.localeCompare(b);
+  });
+  const projectToCharIndex = assignProjectsToCharacters(projectCwds, Descriptions.length);
+  const charIndexToProject = new Map<number, string>();
+  for (const [cwd, charIndex] of projectToCharIndex) charIndexToProject.set(charIndex, cwd);
 
   const messages: Record<LocalId, LocalMessage[]> = {};
   const playerStates = Object.fromEntries(
@@ -399,10 +447,12 @@ export function createLocalWorld(
       const agentId = `local:agent:${description.name}`;
       const deskPosition = description.position ?? { x: 1, y: 1 + index };
       const loungeSpot = loungeSpots[index % loungeSpots.length];
-      const session = mainSessions[index];
+      const cwd = charIndexToProject.get(index);
+      const projectSessions = cwd ? byProject.get(cwd) ?? [] : [];
+      const session = projectSessions[0];
 
       if (!session) {
-        // Nobody assigned — relax in the lounge.
+        // No project assigned to this member — relax in the lounge.
         return [
           playerId,
           {
@@ -421,18 +471,29 @@ export function createLocalWorld(
       }
 
       const running = session.status === 'running';
+      const projectName = (cwd || '').split('/').filter(Boolean).pop() || 'project';
       const conversationKey = `local:conversation:${session.id}`;
       const sessionMessages = (session.recentEvents ?? []).map((event) =>
         eventToMessage(event, playerId, description.name),
       );
       if (sessionMessages.length) messages[conversationKey] = sessionMessages;
       const lastMessage = sessionMessages[sessionMessages.length - 1];
-      const pets = (subsByParent.get(session.id) ?? []).map((sub) => ({
-        id: `local:pet:${sub.id}`,
-        name: sub.name,
-        status: sub.status,
-        agentRole: sub.agentRole ?? undefined,
-      }));
+
+      // Pets = subagents of the lead session + sibling sessions in the same project.
+      const pets = [
+        ...(subsByParent.get(session.id) ?? []).map((sub) => ({
+          id: `local:pet:${sub.id}`,
+          name: sub.name,
+          status: sub.status,
+          agentRole: sub.agentRole ?? undefined,
+        })),
+        ...projectSessions.slice(1).map((sib) => ({
+          id: `local:pet:${sib.id}`,
+          name: sib.name,
+          status: sib.status,
+          agentRole: sib.source,
+        })),
+      ];
 
       return [
         playerId,
@@ -441,8 +502,8 @@ export function createLocalWorld(
           name: description.name,
           agentId,
           characterId,
-          identity: `${session.source.toUpperCase()} · ${session.name}`,
-          // Working sessions stay at their desk; idle ones drift to the lounge.
+          // Dedicated member: project name + the lead session it is running.
+          identity: `${projectName} · ${session.source.toUpperCase()} · ${session.name}`,
           motion: running ? motionFor(deskPosition, index, now) : idleMotion(loungeSpot),
           thinking: running,
           lastPlan: { plan: session.name, ts: session.updatedAt },
