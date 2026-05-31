@@ -1,5 +1,6 @@
-import { Stage } from '@pixi/react';
-import { RefObject, useRef } from 'react';
+import { Stage, Text } from '@pixi/react';
+import * as PIXI from 'pixi.js';
+import { RefObject, useMemo, useRef } from 'react';
 import { PixiStaticMap } from './PixiStaticMap';
 import { Player, SelectPlayer } from './Player';
 import dynamic from 'next/dynamic';
@@ -26,6 +27,17 @@ export const Game = ({
   const viewportRef = useRef<Viewport>(null);
   const offset = 0;
   const { players } = worldState;
+  const teamLabelStyle = useMemo(
+    () =>
+      new PIXI.TextStyle({
+        fontFamily: 'monospace',
+        fontSize: 13,
+        fill: 0xffffff,
+        stroke: 0x1a1118,
+        strokeThickness: 4,
+      }),
+    [],
+  );
 
   return (
     <ViewportContext.Provider value={viewportRef}>
@@ -40,6 +52,16 @@ export const Game = ({
             worldHeight={worldState.map.tileSetDim}
           >
             <PixiStaticMap map={worldState.map}></PixiStaticMap>
+            {worldState.teams.map((team) => (
+              <Text
+                key={team.id}
+                text={team.name}
+                x={(team.center.x + 0.5) * worldState.map.tileDim}
+                y={(team.center.y - 1.2) * worldState.map.tileDim}
+                anchor={{ x: 0.5, y: 1 }}
+                style={teamLabelStyle}
+              />
+            ))}
             {players.map((player) => {
               const playerState = getPlayerState(player._id);
               const character = getCharacter(player.characterId);

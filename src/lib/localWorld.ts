@@ -75,13 +75,6 @@ export type LocalPlayerDoc = {
   characterId: LocalId;
 };
 
-export type LocalPet = {
-  id: LocalId;
-  name: string;
-  status: string;
-  agentRole?: string;
-};
-
 export type LocalPlayerState = {
   id: LocalId;
   name: string;
@@ -92,7 +85,13 @@ export type LocalPlayerState = {
   thinking: boolean;
   lastPlan?: { plan: string; ts: number };
   lastChat?: { message: LocalMessage; conversationId: LocalId };
-  pets?: LocalPet[];
+};
+
+export type LocalTeam = {
+  id: LocalId;
+  name: string;
+  center: Position;
+  source: string;
 };
 
 export type LocalWorldState = {
@@ -102,20 +101,23 @@ export type LocalWorldState = {
   playerStates: Record<LocalId, LocalPlayerState>;
   characters: Record<LocalId, LocalCharacter>;
   messages: Record<LocalId, LocalMessage[]>;
+  teams: LocalTeam[];
 };
 
 const worldId = 'local:world:office';
 const mapId = 'local:map:first-office';
 const localStartTs = Date.now();
 
-// Team areas: each project clusters its members around one of these centers.
+// Team areas: each project clusters its members around a room/zone center.
 const teamAreas: Position[] = [
-  { x: 6, y: 6 },
-  { x: 13, y: 6 },
-  { x: 19, y: 6 },
-  { x: 6, y: 15 },
-  { x: 13, y: 15 },
-  { x: 19, y: 15 },
+  { x: 7, y: 6 },
+  { x: 16, y: 5 },
+  { x: 10, y: 11 },
+  { x: 16, y: 11 },
+  { x: 6, y: 16 },
+  { x: 11, y: 17 },
+  { x: 17, y: 18 },
+  { x: 19, y: 8 },
 ];
 const maxTeamSize = 5;
 
@@ -389,7 +391,13 @@ export function createLocalWorld(
         ];
       }),
     );
-    return { ...worldShell, players: demoPlayers, playerStates, messages: { [conversationId]: messages } };
+    return {
+      ...worldShell,
+      players: demoPlayers,
+      playerStates,
+      messages: { [conversationId]: messages },
+      teams: [],
+    };
   }
 
   // Live mode: each project (cwd) is a team in its own area; every session and
@@ -416,11 +424,18 @@ export function createLocalWorld(
   const players: LocalPlayerDoc[] = [];
   const playerStates: Record<LocalId, LocalPlayerState> = {};
   const messages: Record<LocalId, LocalMessage[]> = {};
+  const teams: LocalTeam[] = [];
 
   teamCwds.forEach((cwd, teamIndex) => {
     const center = teamAreas[teamIndex];
     const projectName = cwd.split('/').filter(Boolean).pop() || 'project';
     const members = (byProject.get(cwd) ?? []).slice(0, maxTeamSize);
+    teams.push({
+      id: `local:team:${cwd}`,
+      name: projectName,
+      center,
+      source: members[0]?.source ?? 'claude',
+    });
 
     members.forEach((session, memberIndex) => {
       const playerId = `local:player:${session.id}`;
@@ -459,5 +474,5 @@ export function createLocalWorld(
     });
   });
 
-  return { ...worldShell, players, playerStates, messages };
+  return { ...worldShell, players, playerStates, messages, teams };
 }
