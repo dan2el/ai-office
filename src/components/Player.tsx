@@ -64,25 +64,6 @@ export const Player = ({
           onClick(playerState.id);
         }}
       />
-      {/* Subagents trail the parent as small "pets". */}
-      {playerState.pets?.map((pet, petIndex) => (
-        <Character
-          key={pet.id}
-          x={baseX + tileDim * 0.65 + petIndex * (tileDim * 0.5)}
-          y={baseY + tileDim * 0.5}
-          orientation={0}
-          isMoving={false}
-          isThinking={pet.status === 'running'}
-          isSpeaking={false}
-          scaleFactor={0.5}
-          textureUrl={character.textureUrl}
-          spritesheetData={character.spritesheetData}
-          speed={character.speed}
-          onClick={() => {
-            onClick(playerState.id);
-          }}
-        />
-      ))}
     </>
   );
 };

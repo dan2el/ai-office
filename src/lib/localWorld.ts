@@ -108,17 +108,16 @@ const worldId = 'local:world:office';
 const mapId = 'local:map:first-office';
 const localStartTs = Date.now();
 
-// Lounge spots (lower-right corner of the map) where idle sessions hang out.
-const loungeSpots: Position[] = [
-  { x: 13, y: 14 },
-  { x: 15, y: 14 },
-  { x: 17, y: 14 },
-  { x: 13, y: 16 },
-  { x: 15, y: 16 },
-  { x: 17, y: 16 },
-  { x: 13, y: 18 },
-  { x: 15, y: 18 },
+// Team areas: each project clusters its members around one of these centers.
+const teamAreas: Position[] = [
+  { x: 6, y: 6 },
+  { x: 13, y: 6 },
+  { x: 19, y: 6 },
+  { x: 6, y: 15 },
+  { x: 13, y: 15 },
+  { x: 19, y: 15 },
 ];
+const maxTeamSize = 5;
 
 const conversationId = 'local:conversation:office-floor';
 
@@ -140,6 +139,13 @@ function identityFor(name: string) {
 
 function clampGrid(value: number) {
   return Math.max(4, Math.min(21, value));
+}
+
+// Place a teammate around their team's center (3-wide grid).
+function memberPosition(center: Position, memberIndex: number): Position {
+  const col = memberIndex % 3;
+  const row = Math.floor(memberIndex / 3);
+  return { x: clampGrid(center.x + (col - 1)), y: clampGrid(center.y + row) };
 }
 
 function patrolRoute(position: Position, index: number) {
@@ -286,27 +292,6 @@ function hashString(value: string) {
   return Math.abs(hash);
 }
 
-// Deterministically bind each project (cwd) to an office character index, so the
-// same project always keeps the same dedicated member. Callers pass running
-// projects first so active work always claims a desk.
-function assignProjectsToCharacters(cwds: string[], numCharacters: number) {
-  const map = new Map<string, number>();
-  const used = new Set<number>();
-  for (const cwd of cwds) {
-    if (used.size >= numCharacters) break;
-    let index = hashString(cwd) % numCharacters;
-    let tries = 0;
-    while (used.has(index) && tries < numCharacters) {
-      index = (index + 1) % numCharacters;
-      tries += 1;
-    }
-    if (used.has(index)) continue;
-    used.add(index);
-    map.set(cwd, index);
-  }
-  return map;
-}
-
 function sortSessionsForOffice(sessions: AgentSession[]) {
   const rank = (status: string) =>
     status === 'running' ? 0 : status === 'starting' ? 1 : status === 'idle' ? 2 : 3;
@@ -351,7 +336,7 @@ export function createLocalWorld(
     ]),
   );
 
-  const players = Descriptions.map((description) => ({
+  const demoPlayers = Descriptions.map((description) => ({
     _id: playerIdsByName[description.name],
     name: description.name,
     worldId,
@@ -368,7 +353,6 @@ export function createLocalWorld(
       frozen: false,
     },
     map,
-    players,
     characters,
   };
 
@@ -405,116 +389,75 @@ export function createLocalWorld(
         ];
       }),
     );
-    return { ...worldShell, playerStates, messages: { [conversationId]: messages } };
+    return { ...worldShell, players: demoPlayers, playerStates, messages: { [conversationId]: messages } };
   }
 
-  // Live mode: each project (cwd) gets one dedicated office character.
+  // Live mode: each project (cwd) is a team in its own area; every session and
+  // subagent is its own character, clustered with its teammates.
   const sorted = sortSessionsForOffice(agentSessions);
-  const mainSessions = sorted.filter((session) => !session.parentThreadId);
 
-  // Subagents grouped by parent session id (rendered as pets).
-  const subsByParent = new Map<string, AgentSession[]>();
-  for (const session of sorted) {
-    if (!session.parentThreadId) continue;
-    const list = subsByParent.get(session.parentThreadId) ?? [];
-    list.push(session);
-    subsByParent.set(session.parentThreadId, list);
-  }
-
-  // Group top-level sessions by project, then bind each project to a character.
+  // Group ALL sessions (leads + subagents) by project.
   const byProject = new Map<string, AgentSession[]>();
-  for (const session of mainSessions) {
+  for (const session of sorted) {
     const key = session.cwd || 'unknown';
     const list = byProject.get(key) ?? [];
     list.push(session);
     byProject.set(key, list);
   }
-  // Running projects first (always get a desk), then deterministic by cwd.
-  const projectCwds = [...byProject.keys()].sort((a, b) => {
-    const ra = (byProject.get(a) ?? []).some((s) => s.status === 'running') ? 0 : 1;
-    const rb = (byProject.get(b) ?? []).some((s) => s.status === 'running') ? 0 : 1;
-    return ra - rb || a.localeCompare(b);
-  });
-  const projectToCharIndex = assignProjectsToCharacters(projectCwds, Descriptions.length);
-  const charIndexToProject = new Map<number, string>();
-  for (const [cwd, charIndex] of projectToCharIndex) charIndexToProject.set(charIndex, cwd);
+  // Running projects first, then deterministic by cwd; cap to the team areas.
+  const teamCwds = [...byProject.keys()]
+    .sort((a, b) => {
+      const ra = (byProject.get(a) ?? []).some((s) => s.status === 'running') ? 0 : 1;
+      const rb = (byProject.get(b) ?? []).some((s) => s.status === 'running') ? 0 : 1;
+      return ra - rb || a.localeCompare(b);
+    })
+    .slice(0, teamAreas.length);
 
+  const players: LocalPlayerDoc[] = [];
+  const playerStates: Record<LocalId, LocalPlayerState> = {};
   const messages: Record<LocalId, LocalMessage[]> = {};
-  const playerStates = Object.fromEntries(
-    Descriptions.map((description, index) => {
-      const playerId = playerIdsByName[description.name];
-      const characterId = characterIdsByName[description.character];
-      const agentId = `local:agent:${description.name}`;
-      const deskPosition = description.position ?? { x: 1, y: 1 + index };
-      const loungeSpot = loungeSpots[index % loungeSpots.length];
-      const cwd = charIndexToProject.get(index);
-      const projectSessions = cwd ? byProject.get(cwd) ?? [] : [];
-      const session = projectSessions[0];
 
-      if (!session) {
-        // No project assigned to this member — relax in the lounge.
-        return [
-          playerId,
-          {
-            id: playerId,
-            name: description.name,
-            agentId,
-            characterId,
-            identity: identityFor(description.name),
-            motion: idleMotion(loungeSpot),
-            thinking: false,
-            lastPlan: { plan: 'Hanging out in the lounge.', ts: now },
-            lastChat: undefined,
-            pets: [],
-          },
-        ];
-      }
+  teamCwds.forEach((cwd, teamIndex) => {
+    const center = teamAreas[teamIndex];
+    const projectName = cwd.split('/').filter(Boolean).pop() || 'project';
+    const members = (byProject.get(cwd) ?? []).slice(0, maxTeamSize);
 
+    members.forEach((session, memberIndex) => {
+      const playerId = `local:player:${session.id}`;
+      const characterDef = characterData[hashString(session.id) % characterData.length];
+      const characterId = characterIdsByName[characterDef.name];
+      const position = memberPosition(center, memberIndex);
       const running = session.status === 'running';
-      const projectName = (cwd || '').split('/').filter(Boolean).pop() || 'project';
+      const role = session.parentThreadId ? 'subagent' : 'lead';
       const conversationKey = `local:conversation:${session.id}`;
       const sessionMessages = (session.recentEvents ?? []).map((event) =>
-        eventToMessage(event, playerId, description.name),
+        eventToMessage(event, playerId, session.name),
       );
       if (sessionMessages.length) messages[conversationKey] = sessionMessages;
       const lastMessage = sessionMessages[sessionMessages.length - 1];
 
-      // Pets = subagents of the lead session + sibling sessions in the same project.
-      const pets = [
-        ...(subsByParent.get(session.id) ?? []).map((sub) => ({
-          id: `local:pet:${sub.id}`,
-          name: sub.name,
-          status: sub.status,
-          agentRole: sub.agentRole ?? undefined,
-        })),
-        ...projectSessions.slice(1).map((sib) => ({
-          id: `local:pet:${sib.id}`,
-          name: sib.name,
-          status: sib.status,
-          agentRole: sib.source,
-        })),
-      ];
+      players.push({
+        _id: playerId,
+        name: session.name,
+        worldId,
+        agentId: `local:agent:${session.id}`,
+        characterId,
+      });
+      playerStates[playerId] = {
+        id: playerId,
+        name: session.name,
+        agentId: `local:agent:${session.id}`,
+        characterId,
+        identity: `${projectName} · ${session.source.toUpperCase()} · ${role}`,
+        motion: idleMotion(position),
+        thinking: running,
+        lastPlan: { plan: session.name, ts: session.updatedAt },
+        lastChat: lastMessage
+          ? { message: lastMessage, conversationId: conversationKey }
+          : undefined,
+      };
+    });
+  });
 
-      return [
-        playerId,
-        {
-          id: playerId,
-          name: description.name,
-          agentId,
-          characterId,
-          // Dedicated member: project name + the lead session it is running.
-          identity: `${projectName} · ${session.source.toUpperCase()} · ${session.name}`,
-          motion: running ? motionFor(deskPosition, index, now) : idleMotion(loungeSpot),
-          thinking: running,
-          lastPlan: { plan: session.name, ts: session.updatedAt },
-          lastChat: lastMessage
-            ? { message: lastMessage, conversationId: conversationKey }
-            : undefined,
-          pets,
-        },
-      ];
-    }),
-  );
-
-  return { ...worldShell, playerStates, messages };
+  return { ...worldShell, players, playerStates, messages };
 }
