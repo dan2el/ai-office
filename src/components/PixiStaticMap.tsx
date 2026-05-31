@@ -5,10 +5,10 @@
 
 import { PixiComponent, applyDefaultProps } from '@pixi/react';
 import * as PIXI from 'pixi.js';
-import { Doc } from '../../convex/_generated/dataModel';
+import { LocalMap } from '@/lib/localWorld';
 
 export const PixiStaticMap = PixiComponent('StaticMap', {
-  create: ({ map }: { map: Doc<'maps'> }) => {
+  create: ({ map }: { map: LocalMap }) => {
     const numytiles = map.tileSetDim / map.tileDim;
 
     const bt = PIXI.BaseTexture.from(map.tileSetUrl, {
@@ -40,14 +40,14 @@ export const PixiStaticMap = PixiComponent('StaticMap', {
       for (let z = 0; z < map.bgTiles.length; z++) {
         const tileIndex = map.bgTiles[z][y][x];
         // Some layers may not have tiles at this location.
-        if (tileIndex === -1) continue;
+        if (tileIndex < 0 || !tiles[tileIndex]) continue;
         const ctile = new PIXI.Sprite(tiles[tileIndex]);
         ctile.x = xPx;
         ctile.y = yPx;
         container.addChild(ctile);
       }
       const l1tile = map.objectTiles[y][x];
-      if (l1tile != -1) {
+      if (l1tile >= 0 && tiles[l1tile]) {
         const ctile = new PIXI.Sprite(tiles[l1tile]);
         ctile.x = xPx;
         ctile.y = yPx;

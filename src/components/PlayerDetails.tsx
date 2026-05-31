@@ -1,22 +1,16 @@
-import { useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
-import { Id } from '../../convex/_generated/dataModel';
-import type { Player as PlayerState } from '../../convex/schema';
 import clsx from 'clsx';
-import LoginButton from './LoginButton';
-import { SignedIn, SignedOut } from '@clerk/nextjs';
+import { useLocalWorld } from './LocalWorldProvider';
+import { LocalId } from '@/lib/localWorld';
 
 function Messages({
   conversationId,
   currentPlayerId,
 }: {
-  conversationId: Id<'conversations'>;
-  currentPlayerId: Id<'players'>;
+  conversationId: LocalId;
+  currentPlayerId: LocalId;
 }) {
-  const messages =
-    useQuery(api.chat.listMessages, {
-      conversationId,
-    }) || [];
+  const { getMessages } = useLocalWorld();
+  const messages = getMessages(conversationId);
   return (
     <>
       {[...messages]
@@ -49,8 +43,9 @@ function Messages({
   );
 }
 
-export default function PlayerDetails({ playerId }: { playerId: Id<'players'> }) {
-  const playerState = useQuery(api.players.playerState, { playerId });
+export default function PlayerDetails({ playerId }: { playerId: LocalId }) {
+  const { getPlayerState } = useLocalWorld();
+  const playerState = getPlayerState(playerId);
 
   return (
     playerState && (

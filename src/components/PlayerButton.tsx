@@ -1,42 +1,24 @@
 'use client';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
-import { Doc, Id } from '../../convex/_generated/dataModel';
-import { useEffect, useRef, useState } from 'react';
 import { SelectPlayer } from './Player';
-import { ViewportContext } from './Game';
-import { createContext, useContext } from 'react';
-import { Character } from './Character';
-import { useTick } from '@pixi/react';
-import { getPoseFromMotion } from '../../convex/lib/physics';
-import { Pose } from '../../convex/schema';
-
-// Inside your component
+import { useLocalWorld } from './LocalWorldProvider';
+import { LocalId, LocalPlayerDoc } from '@/lib/localWorld';
 
 export default function PlayerButton(
   { player, 
     selectPlayer,
     selectedPlayer,
   }:{
-    player: Doc<'players'>;
+    player: LocalPlayerDoc;
     selectPlayer: SelectPlayer;
-    selectedPlayer: Id<'players'> | undefined;
+    selectedPlayer: LocalId | undefined;
   }) {
-  const playerState = useQuery(api.players.playerState, {
-    playerId: player._id,
-  });
-  const character = useQuery(api.players.characterData, {
-    characterId: player.characterId,
-  });
-  const viewportRef = useContext(ViewportContext);
+  const { getPlayerState } = useLocalWorld();
+  const playerState = getPlayerState(player._id);
   const handleClick = () => {
     if (playerState) {
       selectPlayer(playerState.id);
     }
   };
-
-  const [pose, setPose] = useState<Pose>();
-  const time = useRef(0);
 
   return (
     <>
@@ -57,4 +39,3 @@ export default function PlayerButton(
     </>
   );
 }
-

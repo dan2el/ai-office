@@ -1,34 +1,32 @@
 import { useTick } from '@pixi/react';
 import { useRef, useState } from 'react';
-import { useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
-import { getPoseFromMotion } from '../../convex/lib/physics';
-import { Doc, Id } from '../../convex/_generated/dataModel';
-import type { Pose } from '../../convex/schema';
+import {
+  LocalCharacter,
+  LocalId,
+  LocalPlayerState,
+  Pose,
+  getPoseFromMotion,
+} from '@/lib/localWorld';
 import { Character } from './Character';
 
 const SpeechDurationMs = 2000;
 const SpokeRecentlyMs = 5_000;
 
-export type SelectPlayer = (playerId: Id<'players'>) => void;
+export type SelectPlayer = (playerId: LocalId) => void;
 
 export const Player = ({
-  player,
+  playerState,
+  character,
   offset,
   tileDim,
   onClick,
 }: {
-  player: Doc<'players'>;
+  playerState: LocalPlayerState;
+  character: LocalCharacter;
   offset: number;
   tileDim: number;
   onClick: SelectPlayer;
 }) => {
-  const playerState = useQuery(api.players.playerState, {
-    playerId: player._id,
-  });
-  const character = useQuery(api.players.characterData, {
-    characterId: player.characterId,
-  });
   const [pose, setPose] = useState<Pose>();
   const time = useRef(0);
   useTick(() => {

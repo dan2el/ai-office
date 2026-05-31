@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "npm-run-all dev:init --parallel dev:frontend dev:backend",
+    "dev": "npm run dev:frontend",
     "build": "tsc && next build",
     "start": "next start",
     "lint": "next lint",
-    "dev:backend": "convex dev",
+    "dev:backend": "node -e \"console.log('Convex backend is disabled. The local AI Office world runs in the browser.')\"",
     "dev:frontend": "next dev",
-    "dev:init": "convex dev --run init --until-success"
+    "dev:init": "node -e \"console.log('No Convex init is needed for local mode.')\"",
+    "monitor:codex": "node scripts/codex-monitor.mjs run",
+    "monitor:codex:watch": "node scripts/codex-monitor.mjs watch"
   },
   "dependencies": {
     "@clerk/clerk-react": "^4.21.9-snapshot.56dc3e3",

@@ -3,15 +3,13 @@ import PlayerDetails from './PlayerDetails';
 import Game from './Game';
 import { useElementSize } from 'usehooks-ts';
 import { SelectPlayer } from './Player';
-import { Id } from '../../convex/_generated/dataModel';
-
-
+import { LocalId } from '@/lib/localWorld';
 
 export default function GameWrapper({
   selectedPlayer, 
   setSelectedPlayer
 }:{
-  selectedPlayer: Id<'players'> | undefined;
+  selectedPlayer: LocalId | undefined;
   setSelectedPlayer:SelectPlayer;
 }
   ) {
@@ -23,7 +21,7 @@ export default function GameWrapper({
       {/* Game area */}
       <div className="relative overflow-hidden bg-brown-900" ref={gameWrapperRef}>
         <div className="absolute inset-0">
-          <Game width={width} height={height} selectedPlayer={selectedPlayer} setSelectedPlayer={setSelectedPlayer} />
+          <Game width={width} height={height} setSelectedPlayer={setSelectedPlayer} />
         </div>
       </div>
 

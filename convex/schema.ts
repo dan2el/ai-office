@@ -200,6 +200,39 @@ export const Characters = Table('characters', {
 });
 export type SpritesheetData = Infer<(typeof Characters.fields)['spritesheetData']>;
 
+export const CodexSessionStatus = v.union(
+  v.literal('starting'),
+  v.literal('running'),
+  v.literal('idle'),
+  v.literal('done'),
+  v.literal('failed'),
+  v.literal('cancelled'),
+);
+export type CodexSessionStatus = Infer<typeof CodexSessionStatus>;
+
+export const CodexEventKind = v.union(
+  v.literal('stdout'),
+  v.literal('stderr'),
+  v.literal('status'),
+  v.literal('tool'),
+  v.literal('file'),
+  v.literal('git'),
+  v.literal('subagent'),
+  v.literal('message'),
+  v.literal('error'),
+);
+export type CodexEventKind = Infer<typeof CodexEventKind>;
+
+export const CodexEventSource = v.union(
+  v.literal('codex'),
+  v.literal('collector'),
+  v.literal('subagent'),
+  v.literal('user'),
+  v.literal('assistant'),
+  v.literal('tool'),
+);
+export type CodexEventSource = Infer<typeof CodexEventSource>;
+
 // Hierarchical location within tree
 // Future: build zone lookup from position, whether player-dependent or global.
 // export const Zones = Table('zones', {
@@ -276,6 +309,42 @@ export default defineSchema(
     conversations: defineTable({ worldId: v.id('worlds') }).index('by_worldId', ['worldId']),
 
     heartbeats: defineTable({}),
+
+    codexSessions: defineTable({
+      sessionKey: v.string(),
+      name: v.string(),
+      cwd: v.string(),
+      command: v.array(v.string()),
+      status: CodexSessionStatus,
+      startedAt: v.number(),
+      updatedAt: v.number(),
+      endedAt: v.optional(v.number()),
+      exitCode: v.optional(v.number()),
+      signal: v.optional(v.string()),
+      pid: v.optional(v.number()),
+      host: v.optional(v.string()),
+      branch: v.optional(v.string()),
+      gitHead: v.optional(v.string()),
+    })
+      .index('by_sessionKey', ['sessionKey'])
+      .index('by_status_updatedAt', ['status', 'updatedAt'])
+      .index('by_updatedAt', ['updatedAt']),
+
+    codexEvents: defineTable({
+      sessionId: v.id('codexSessions'),
+      seq: v.number(),
+      ts: v.number(),
+      kind: CodexEventKind,
+      source: CodexEventSource,
+      agentName: v.optional(v.string()),
+      channel: v.optional(v.string()),
+      parentSeq: v.optional(v.number()),
+      text: v.optional(v.string()),
+      data: v.optional(v.any()),
+    })
+      .index('by_session_seq', ['sessionId', 'seq'])
+      .index('by_session_ts', ['sessionId', 'ts'])
+      .index('by_ts', ['ts']),
   },
   // When schemaValidation is enabled, it prevents pushing code that has a
   // schema incompatible with the current database.

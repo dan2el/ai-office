@@ -1,28 +1,10 @@
 'use client';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export default function FreezeButton() {
-  const worldState = useQuery(api.players.getWorld, {});
-  const worldId = worldState?.world._id;
-  const frozen: boolean | undefined = worldState?.world.frozen;
+  const [isFrozen, setFrozen] = useState(false);
 
-  const [isFrozen, setFrozen] = useState(frozen);
-
-  useEffect(() => {
-    setFrozen(frozen);
-  }, [frozen]);
-
-  const unfreeze = useMutation(api.engine.unfreeze);
-  const freezeAll = useMutation(api.engine.freezeAll);
-
-  const flipSwitch = async () => {
-    if (isFrozen) {
-      await unfreeze({ worldId }); // use the mutation function here
-    } else {
-      await freezeAll(); // use the mutation function here
-    }
+  const flipSwitch = () => {
     setFrozen(!isFrozen);
   };
 

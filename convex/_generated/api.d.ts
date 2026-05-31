@@ -29,6 +29,7 @@ import type * as characterdata_spritesheets_p2 from "../characterdata/spriteshee
 import type * as characterdata_spritesheets_p3 from "../characterdata/spritesheets/p3";
 import type * as characterdata_spritesheets_player from "../characterdata/spritesheets/player";
 import type * as chat from "../chat";
+import type * as codexMonitor from "../codexMonitor";
 import type * as config from "../config";
 import type * as conversation from "../conversation";
 import type * as crons from "../crons";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "characterdata/spritesheets/p3": typeof characterdata_spritesheets_p3;
   "characterdata/spritesheets/player": typeof characterdata_spritesheets_player;
   chat: typeof chat;
+  codexMonitor: typeof codexMonitor;
   config: typeof config;
   conversation: typeof conversation;
   crons: typeof crons;

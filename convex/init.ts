@@ -8,20 +8,13 @@ import {
   internalQuery,
 } from './_generated/server';
 import { MemoryDB } from './lib/memory';
+import { pineconeAvailable } from './lib/pinecone';
 import { Characters } from './schema';
 import { tiledim, objmap, tilefiledim, bgtiles, tilesetpath } from './maps/firstmap';
 import { Descriptions, characters as characterData } from './characterdata/data';
 
-if (!process.env.OPENAI_API_KEY) {
-  const deploymentName = process.env.CONVEX_CLOUD_URL?.slice(8).replace('.convex.cloud', '');
-  throw new Error(
-    '\n  Missing OPENAI_API_KEY in environment variables.\n\n' +
-      '  Get one at https://openai.com/\n\n' +
-      '  Paste it on the Convex dashboard:\n' +
-      '  https://dashboard.convex.dev/d/' +
-      deploymentName +
-      '/settings?var=OPENAI_API_KEY',
-  );
+function aiMemoryAvailable() {
+  return !!process.env.OPENAI_API_KEY && pineconeAvailable();
 }
 
 export const existingWorld = internalQuery({
@@ -125,11 +118,13 @@ export const seed = internalAction({
     const existingWorldId = await ctx.runQuery(internal.init.existingWorld);
     if (!newWorld && existingWorldId) return existingWorldId._id;
 
+    const enableAiMemory = aiMemoryAvailable();
+    const seedFrozen = frozen ?? !enableAiMemory;
     const characters = characterData;
     const { playersByName, worldId } = await ctx.runMutation(internal.init.addPlayers, {
       newWorld,
       characters,
-      frozen,
+      frozen: seedFrozen,
     });
     console.log(`Created world ${worldId}`);
     const memories = Descriptions.flatMap(({ name, memories }) => {
@@ -154,10 +149,16 @@ export const seed = internalAction({
         return newMemory;
       });
     });
-    // It will check the cache, calculate missing embeddings, and add them.
-    // If it fails here, it won't be retried. But you could clear the memor
-    await MemoryDB(ctx).addMemories(memories);
-    await ctx.runMutation(internal.engine.tick, { worldId });
+    if (enableAiMemory) {
+      // It will check the cache, calculate missing embeddings, and add them.
+      // If it fails here, it won't be retried. But you could clear the memory tables.
+      await MemoryDB(ctx).addMemories(memories);
+      await ctx.runMutation(internal.engine.tick, { worldId });
+    } else {
+      console.warn(
+        'Seeded a frozen visual world without AI memories. Set OPENAI_API_KEY and Pinecone env vars to enable autonomous agents.',
+      );
+    }
     return worldId;
   },
 });

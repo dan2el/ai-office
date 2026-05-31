@@ -24,6 +24,8 @@ game/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.codex-monitor/
+.claude/
 
 # local env files
 .env*.local
