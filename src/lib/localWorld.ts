@@ -75,6 +75,13 @@ export type LocalPlayerDoc = {
   characterId: LocalId;
 };
 
+export type LocalPet = {
+  id: LocalId;
+  name: string;
+  status: string;
+  agentRole?: string;
+};
+
 export type LocalPlayerState = {
   id: LocalId;
   name: string;
@@ -85,6 +92,7 @@ export type LocalPlayerState = {
   thinking: boolean;
   lastPlan?: { plan: string; ts: number };
   lastChat?: { message: LocalMessage; conversationId: LocalId };
+  pets?: LocalPet[];
 };
 
 export type LocalWorldState = {
@@ -99,6 +107,18 @@ export type LocalWorldState = {
 const worldId = 'local:world:office';
 const mapId = 'local:map:first-office';
 const localStartTs = Date.now();
+
+// Lounge spots (lower-right corner of the map) where idle sessions hang out.
+const loungeSpots: Position[] = [
+  { x: 13, y: 14 },
+  { x: 15, y: 14 },
+  { x: 17, y: 14 },
+  { x: 13, y: 16 },
+  { x: 15, y: 16 },
+  { x: 17, y: 16 },
+  { x: 13, y: 18 },
+  { x: 15, y: 18 },
+];
 
 const conversationId = 'local:conversation:office-floor';
 
@@ -249,6 +269,8 @@ export type AgentSession = {
   cwd?: string;
   branch?: string | null;
   model?: string | null;
+  parentThreadId?: string | null;
+  agentRole?: string | null;
   recentEvents?: AgentEvent[];
 };
 
@@ -358,18 +380,29 @@ export function createLocalWorld(
   }
 
   // Live mode: assign each character to a real Codex/Claude session.
+  // Only top-level sessions become characters; subagents ride along as pets.
   const sorted = sortSessionsForOffice(agentSessions);
+  const mainSessions = sorted.filter((session) => !session.parentThreadId);
+  const subsByParent = new Map<string, AgentSession[]>();
+  for (const session of sorted) {
+    if (!session.parentThreadId) continue;
+    const list = subsByParent.get(session.parentThreadId) ?? [];
+    list.push(session);
+    subsByParent.set(session.parentThreadId, list);
+  }
+
   const messages: Record<LocalId, LocalMessage[]> = {};
   const playerStates = Object.fromEntries(
     Descriptions.map((description, index) => {
       const playerId = playerIdsByName[description.name];
       const characterId = characterIdsByName[description.character];
       const agentId = `local:agent:${description.name}`;
-      const position = description.position ?? { x: 1, y: 1 + index };
-      const session = sorted[index];
+      const deskPosition = description.position ?? { x: 1, y: 1 + index };
+      const loungeSpot = loungeSpots[index % loungeSpots.length];
+      const session = mainSessions[index];
 
       if (!session) {
-        // No session assigned to this desk — keep them milling around, idle.
+        // Nobody assigned — relax in the lounge.
         return [
           playerId,
           {
@@ -378,10 +411,11 @@ export function createLocalWorld(
             agentId,
             characterId,
             identity: identityFor(description.name),
-            motion: motionFor(position, index, now),
+            motion: idleMotion(loungeSpot),
             thinking: false,
-            lastPlan: { plan: 'Waiting for a task.', ts: now },
+            lastPlan: { plan: 'Hanging out in the lounge.', ts: now },
             lastChat: undefined,
+            pets: [],
           },
         ];
       }
@@ -393,6 +427,12 @@ export function createLocalWorld(
       );
       if (sessionMessages.length) messages[conversationKey] = sessionMessages;
       const lastMessage = sessionMessages[sessionMessages.length - 1];
+      const pets = (subsByParent.get(session.id) ?? []).map((sub) => ({
+        id: `local:pet:${sub.id}`,
+        name: sub.name,
+        status: sub.status,
+        agentRole: sub.agentRole ?? undefined,
+      }));
 
       return [
         playerId,
@@ -402,12 +442,14 @@ export function createLocalWorld(
           agentId,
           characterId,
           identity: `${session.source.toUpperCase()} · ${session.name}`,
-          motion: running ? motionFor(position, index, now) : idleMotion(position),
+          // Working sessions stay at their desk; idle ones drift to the lounge.
+          motion: running ? motionFor(deskPosition, index, now) : idleMotion(loungeSpot),
           thinking: running,
           lastPlan: { plan: session.name, ts: session.updatedAt },
           lastChat: lastMessage
             ? { message: lastMessage, conversationId: conversationKey }
             : undefined,
+          pets,
         },
       ];
     }),

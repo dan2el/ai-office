@@ -38,28 +38,51 @@ export const Player = ({
   });
   if (!playerState || !character) return null;
   if (!pose) return null;
+  const baseX = pose.position.x * tileDim + tileDim / 2;
+  const baseY = pose.position.y * tileDim + tileDim / 2;
   return (
-    <Character
-      x={pose.position.x * tileDim + tileDim / 2}
-      y={pose.position.y * tileDim + tileDim / 2}
-      orientation={pose.orientation}
-      isMoving={
-        playerState.motion.type === 'walking' && playerState.motion.targetEndTs >= time.current
-      }
-      isThinking={
-        playerState.thinking &&
-        (playerState.lastChat?.message.ts ?? 0) < time.current - SpokeRecentlyMs
-      }
-      isSpeaking={
-        playerState.lastChat?.message.type === 'responded' &&
-        (playerState.lastChat.message.ts ?? 0) > time.current - SpeechDurationMs
-      }
-      textureUrl={character.textureUrl}
-      spritesheetData={character.spritesheetData}
-      speed={character.speed}
-      onClick={() => {
-        onClick(playerState.id);
-      }}
-    />
+    <>
+      <Character
+        x={baseX}
+        y={baseY}
+        orientation={pose.orientation}
+        isMoving={
+          playerState.motion.type === 'walking' && playerState.motion.targetEndTs >= time.current
+        }
+        isThinking={
+          playerState.thinking &&
+          (playerState.lastChat?.message.ts ?? 0) < time.current - SpokeRecentlyMs
+        }
+        isSpeaking={
+          playerState.lastChat?.message.type === 'responded' &&
+          (playerState.lastChat.message.ts ?? 0) > time.current - SpeechDurationMs
+        }
+        textureUrl={character.textureUrl}
+        spritesheetData={character.spritesheetData}
+        speed={character.speed}
+        onClick={() => {
+          onClick(playerState.id);
+        }}
+      />
+      {/* Subagents trail the parent as small "pets". */}
+      {playerState.pets?.map((pet, petIndex) => (
+        <Character
+          key={pet.id}
+          x={baseX + tileDim * 0.65 + petIndex * (tileDim * 0.5)}
+          y={baseY + tileDim * 0.5}
+          orientation={0}
+          isMoving={false}
+          isThinking={pet.status === 'running'}
+          isSpeaking={false}
+          scaleFactor={0.5}
+          textureUrl={character.textureUrl}
+          spritesheetData={character.spritesheetData}
+          speed={character.speed}
+          onClick={() => {
+            onClick(playerState.id);
+          }}
+        />
+      ))}
+    </>
   );
 };
