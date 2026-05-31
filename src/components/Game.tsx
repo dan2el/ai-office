@@ -39,6 +39,11 @@ export const Game = ({
     [],
   );
 
+  // Wait for the container to be measured so the viewport fits to a real size.
+  if (!width || !height) {
+    return null;
+  }
+
   return (
     <ViewportContext.Provider value={viewportRef}>
 
