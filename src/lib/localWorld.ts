@@ -108,16 +108,16 @@ const worldId = 'local:world:office';
 const mapId = 'local:map:first-office';
 const localStartTs = Date.now();
 
-// Team areas: each project clusters its members around a room/zone center.
+// Team areas: each project clusters around a room center (a walkable floor tile).
 const teamAreas: Position[] = [
-  { x: 7, y: 6 },
-  { x: 16, y: 5 },
-  { x: 10, y: 11 },
-  { x: 16, y: 11 },
-  { x: 6, y: 16 },
-  { x: 11, y: 17 },
-  { x: 17, y: 18 },
-  { x: 19, y: 8 },
+  { x: 3, y: 5 },
+  { x: 9, y: 5 },
+  { x: 18, y: 5 },
+  { x: 9, y: 10 },
+  { x: 18, y: 9 },
+  { x: 3, y: 12 },
+  { x: 10, y: 14 },
+  { x: 18, y: 14 },
 ];
 const maxTeamSize = 5;
 
@@ -143,11 +143,35 @@ function clampGrid(value: number) {
   return Math.max(4, Math.min(21, value));
 }
 
-// Place a teammate around their team's center (3-wide grid).
-function memberPosition(center: Position, memberIndex: number): Position {
-  const col = memberIndex % 3;
-  const row = Math.floor(memberIndex / 3);
-  return { x: clampGrid(center.x + (col - 1)), y: clampGrid(center.y + row) };
+// Walkable floor tiles: objmap === -1 means no furniture/wall on that tile.
+const walkableTiles: Set<string> = (() => {
+  const set = new Set<string>();
+  objmap.forEach((row, y) =>
+    row.forEach((value, x) => {
+      if (value === -1) set.add(`${x},${y}`);
+    }),
+  );
+  return set;
+})();
+
+// Find the nearest free floor tile around a center (spiral out), skipping
+// furniture/walls and tiles already taken by other teammates.
+function findFloorSpot(center: Position, occupied: Set<string>): Position {
+  for (let radius = 0; radius <= 8; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const x = center.x + dx;
+        const y = center.y + dy;
+        const key = `${x},${y}`;
+        if (walkableTiles.has(key) && !occupied.has(key)) {
+          occupied.add(key);
+          return { x, y };
+        }
+      }
+    }
+  }
+  return center;
 }
 
 function patrolRoute(position: Position, index: number) {
@@ -302,6 +326,17 @@ function sortSessionsForOffice(sessions: AgentSession[]) {
   );
 }
 
+// Human-friendlier team label from a cwd: use the last path segment, but keep
+// the parent too when the leaf is numeric or very short (e.g. ".../file/1").
+function projectLabel(cwd: string): string {
+  const parts = cwd.split('/').filter(Boolean);
+  const last = parts[parts.length - 1] || 'project';
+  if (parts.length >= 2 && (/^\d+$/.test(last) || last.length <= 2)) {
+    return parts.slice(-2).join('/');
+  }
+  return last;
+}
+
 function eventToMessage(event: AgentEvent, playerId: LocalId, name: string): LocalMessage {
   const prefix = event.channel && event.kind !== 'message' ? `[${event.channel}] ` : '';
   return {
@@ -425,10 +460,11 @@ export function createLocalWorld(
   const playerStates: Record<LocalId, LocalPlayerState> = {};
   const messages: Record<LocalId, LocalMessage[]> = {};
   const teams: LocalTeam[] = [];
+  const occupied = new Set<string>();
 
   teamCwds.forEach((cwd, teamIndex) => {
     const center = teamAreas[teamIndex];
-    const projectName = cwd.split('/').filter(Boolean).pop() || 'project';
+    const projectName = projectLabel(cwd);
     const members = (byProject.get(cwd) ?? []).slice(0, maxTeamSize);
     teams.push({
       id: `local:team:${cwd}`,
@@ -437,11 +473,11 @@ export function createLocalWorld(
       source: members[0]?.source ?? 'claude',
     });
 
-    members.forEach((session, memberIndex) => {
+    members.forEach((session) => {
       const playerId = `local:player:${session.id}`;
       const characterDef = characterData[hashString(session.id) % characterData.length];
       const characterId = characterIdsByName[characterDef.name];
-      const position = memberPosition(center, memberIndex);
+      const position = findFloorSpot(center, occupied);
       const running = session.status === 'running';
       const role = session.parentThreadId ? 'subagent' : 'lead';
       const conversationKey = `local:conversation:${session.id}`;

@@ -1,4 +1,4 @@
-import { Stage, Text } from '@pixi/react';
+import { Graphics, Stage, Text } from '@pixi/react';
 import * as PIXI from 'pixi.js';
 import { RefObject, useMemo, useRef } from 'react';
 import { PixiStaticMap } from './PixiStaticMap';
@@ -52,6 +52,25 @@ export const Game = ({
             worldHeight={worldState.map.tileSetDim}
           >
             <PixiStaticMap map={worldState.map}></PixiStaticMap>
+            <Graphics
+              draw={(g) => {
+                g.clear();
+                const t = worldState.map.tileDim;
+                worldState.teams.forEach((team) => {
+                  const color = team.source === 'codex' ? 0xc08552 : 0x4a8db5;
+                  g.beginFill(color, 0.1);
+                  g.lineStyle(2, color, 0.45);
+                  g.drawRoundedRect(
+                    (team.center.x - 2.5) * t,
+                    (team.center.y - 1.2) * t,
+                    5 * t,
+                    4 * t,
+                    10,
+                  );
+                  g.endFill();
+                });
+              }}
+            />
             {worldState.teams.map((team) => (
               <Text
                 key={team.id}
