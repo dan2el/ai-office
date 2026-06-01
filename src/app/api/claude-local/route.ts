@@ -138,6 +138,43 @@ function resultText(content: unknown): string {
   return content ? JSON.stringify(content) : '';
 }
 
+function isCharacterEvent(event: MonitorEvent) {
+  const text = event.text ?? '';
+  if (!text.trim()) return false;
+  if (event.kind === 'message' || event.kind === 'error' || event.kind === 'subagent') return true;
+  if (event.kind !== 'tool') return false;
+  if (event.channel?.startsWith('mcp__Claude_Preview__')) return false;
+  if (event.channel === 'TodoWrite') return false;
+  return true;
+}
+
+function isPrimaryCharacterEvent(event: MonitorEvent) {
+  return ['message', 'error', 'subagent'].includes(event.kind) && Boolean(event.text?.trim());
+}
+
+function recentCharacterEvents(events: MonitorEvent[]) {
+  const primary = events.filter(isPrimaryCharacterEvent);
+  if (primary.length) {
+    return primary.slice(-8).map((event) => ({
+      ts: event.ts,
+      kind: event.kind,
+      channel: event.channel ?? null,
+      text: event.text ?? null,
+      source: event.source,
+    }));
+  }
+  const useful = events.filter(isCharacterEvent);
+  return (useful.length ? useful : events.filter((event) => event.text?.trim()))
+    .slice(-8)
+    .map((event) => ({
+      ts: event.ts,
+      kind: event.kind,
+      channel: event.channel ?? null,
+      text: event.text ?? null,
+      source: event.source,
+    }));
+}
+
 function eventsFromLines(lines: TranscriptLine[], sessionId: string): MonitorEvent[] {
   const events: MonitorEvent[] = [];
   const toolNames = new Map<string, string>();
@@ -241,15 +278,7 @@ function sessionFromLines(
   const startedAt = timestamps.length ? Math.min(...timestamps) : mtimeMs;
   const updatedAt = timestamps.length ? Math.max(...timestamps) : mtimeMs;
   const status = Date.now() - updatedAt < 90_000 ? 'running' : 'idle';
-  const recentEvents = eventsFromLines(lines, sessionId)
-    .slice(-6)
-    .map((event) => ({
-      ts: event.ts,
-      kind: event.kind,
-      channel: event.channel ?? null,
-      text: event.text ?? null,
-      source: event.source,
-    }));
+  const recentEvents = recentCharacterEvents(eventsFromLines(lines, sessionId));
 
   return {
     id: sessionId,

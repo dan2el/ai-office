@@ -18,6 +18,7 @@ type SqlValue = string | number | null;
 
 type ThreadRow = {
   id: string;
+  rollout_path: string;
   title: string;
   cwd: string;
   source: string;
@@ -29,6 +30,8 @@ type ThreadRow = {
   git_sha: string | null;
   agent_nickname: string | null;
   agent_role: string | null;
+  first_user_message: string;
+  preview: string;
 };
 
 type LogRow = {
@@ -39,6 +42,38 @@ type LogRow = {
   target: string;
   body: string | null;
 };
+
+type MonitorEvent = {
+  id: string;
+  ts: number;
+  kind: string;
+  source: string;
+  agentName?: string | null;
+  channel?: string | null;
+  text?: string | null;
+  data?: unknown;
+};
+
+type RolloutContent = Array<{ type?: string; text?: string }>;
+
+type RolloutLine = {
+  timestamp?: string;
+  type?: string;
+  payload?: {
+    type?: string;
+    role?: string;
+    phase?: string;
+    message?: string;
+    name?: string;
+    arguments?: string;
+    call_id?: string;
+    content?: RolloutContent;
+  };
+};
+
+const threadSelect = `id, rollout_path, title, cwd, source, model, reasoning_effort,
+            updated_at_ms, created_at_ms, git_branch, git_sha, agent_nickname, agent_role,
+            first_user_message, preview`;
 
 function sqlString(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -63,6 +98,98 @@ function safeText(value: string) {
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, '[redacted-key]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
     .replace(/user\.account_id="[^"]+"/g, 'user.account_id="[redacted]"');
+}
+
+function clip(value: string, max = 1800) {
+  const trimmed = value.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max)}...` : trimmed;
+}
+
+function oneLine(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function textFromContent(content: RolloutContent | undefined) {
+  return (
+    content
+      ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .join('\n')
+      .trim() ?? ''
+  );
+}
+
+function userRequestText(message: string) {
+  const marker = '## My request for Codex:';
+  const markerIndex = message.lastIndexOf(marker);
+  const raw = markerIndex === -1 ? message : message.slice(markerIndex + marker.length);
+  return clip(
+    safeText(raw)
+      .replace(/<image name=\[Image #[\s\S]*?<\/image>/g, '[image]')
+      .replace(/^# Files mentioned by the user:[\s\S]*?(?=\n# In app browser:|\n## My request|$)/, '')
+      .trim(),
+    1200,
+  );
+}
+
+function parseToolArgs(raw: string | undefined) {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function toolText(name: string, rawArgs: string | undefined) {
+  const args = parseToolArgs(rawArgs);
+  const str = (key: string) => (typeof args[key] === 'string' ? (args[key] as string) : undefined);
+  if (name === 'exec_command') return str('cmd') ?? name;
+  if (name === 'write_stdin') return `continue terminal session ${String(args.session_id ?? '')}`.trim();
+  if (name === 'apply_patch') return 'apply code patch';
+  if (name === 'update_plan') return 'update task plan';
+  if (name === 'tool_search_tool') return `tool search: ${str('query') ?? ''}`.trim();
+  if (name === 'js') return str('title') ?? 'browser automation';
+  if (name.includes('node_repl') || name.includes('browser')) {
+    return str('title') ?? 'browser automation';
+  }
+  return oneLine(rawArgs || name).slice(0, 240);
+}
+
+function isCharacterEvent(event: MonitorEvent) {
+  const text = event.text ?? '';
+  if (!text.trim()) return false;
+  if (event.kind === 'message' || event.kind === 'error' || event.kind === 'subagent') return true;
+  if (event.kind !== 'tool') return false;
+  if (text === `${event.channel} call started`) return false;
+  if (event.channel?.includes('logs') || event.channel === 'write_stdin') return false;
+  return true;
+}
+
+function isPrimaryCharacterEvent(event: MonitorEvent) {
+  return ['message', 'error', 'subagent'].includes(event.kind) && Boolean(event.text?.trim());
+}
+
+function recentCharacterEvents(events: MonitorEvent[]) {
+  const primary = events.filter(isPrimaryCharacterEvent);
+  if (primary.length) {
+    return primary.slice(-8).map((event) => ({
+      ts: event.ts,
+      kind: event.kind,
+      channel: event.channel,
+      text: event.text,
+      source: event.source,
+    }));
+  }
+  const useful = events.filter(isCharacterEvent);
+  return (useful.length ? useful : events.filter((event) => event.text?.trim()))
+    .slice(-8)
+    .map((event) => ({
+      ts: event.ts,
+      kind: event.kind,
+      channel: event.channel,
+      text: event.text,
+      source: event.source,
+    }));
 }
 
 function parseSource(source: string) {
@@ -221,11 +348,120 @@ function classifyLog(row: LogRow) {
   return null;
 }
 
+async function readThread(threadId: string) {
+  if (!threadIdPattern.test(threadId)) return null;
+  const rows = await sqliteJson<ThreadRow>(
+    stateDb,
+    `select ${threadSelect}
+       from threads
+      where id = ?
+      limit 1`,
+    [threadId],
+  );
+  return rows[0] ?? null;
+}
+
+async function readRolloutEvents(thread: Pick<ThreadRow, 'id' | 'rollout_path'>) {
+  if (!thread.rollout_path) return [];
+  let raw = '';
+  try {
+    raw = await fs.readFile(thread.rollout_path, 'utf8');
+  } catch {
+    return [];
+  }
+
+  const events: MonitorEvent[] = [];
+  let seq = 0;
+  const push = (event: Omit<MonitorEvent, 'id'>) => {
+    events.push({ id: `codex-rollout-${thread.id}-${seq}`, ...event });
+    seq += 1;
+  };
+
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let parsed: RolloutLine;
+    try {
+      parsed = JSON.parse(line) as RolloutLine;
+    } catch {
+      continue;
+    }
+    const ts = parsed.timestamp ? Date.parse(parsed.timestamp) : NaN;
+    const stamp = Number.isFinite(ts) ? ts : Date.now();
+    const payload = parsed.payload;
+    if (!payload) continue;
+
+    if (parsed.type === 'event_msg' && payload.type === 'user_message' && payload.message) {
+      const text = userRequestText(payload.message);
+      if (text) {
+        push({
+          ts: stamp,
+          kind: 'message',
+          source: 'user',
+          agentName: 'You',
+          channel: 'prompt',
+          text,
+        });
+      }
+      continue;
+    }
+
+    if (parsed.type === 'event_msg' && payload.type === 'agent_message' && payload.message) {
+      push({
+        ts: stamp,
+        kind: 'message',
+        source: 'assistant',
+        agentName: 'Codex Desktop',
+        channel: payload.phase === 'final_answer' ? 'final' : 'update',
+        text: clip(safeText(payload.message)),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'response_item' && payload.type === 'function_call' && payload.name) {
+      const text = clip(safeText(toolText(payload.name, payload.arguments)), 500);
+      if (text) {
+        push({
+          ts: stamp,
+          kind: 'tool',
+          source: 'tool',
+          agentName: 'Codex Desktop',
+          channel: payload.name,
+          text,
+          data: { callId: payload.call_id },
+        });
+      }
+      continue;
+    }
+
+    if (parsed.type === 'response_item' && payload.type === 'message') {
+      if (payload.role !== 'assistant' || payload.phase !== 'final_answer') continue;
+      const text = textFromContent(payload.content);
+      if (text) {
+        push({
+          ts: stamp,
+          kind: 'message',
+          source: 'assistant',
+          agentName: 'Codex Desktop',
+          channel: 'final',
+          text: clip(safeText(text)),
+        });
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    const key = `${event.ts}:${event.kind}:${event.channel}:${event.text}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function readSessions() {
   const threads = await sqliteJson<ThreadRow>(
     stateDb,
-    `select id, title, cwd, source, model, reasoning_effort, updated_at_ms,
-            created_at_ms, git_branch, git_sha, agent_nickname, agent_role
+    `select ${threadSelect}
        from threads
       order by updated_at_ms desc
       limit 12`,
@@ -234,22 +470,16 @@ async function readSessions() {
     threads.map(async (thread) => {
       const session = sessionFromThread(thread);
       // Attach a few recent events so each session can drive its office character.
-      const events = await readEvents(thread.id).catch(() => []);
+      const events = await readEvents(thread).catch(() => []);
       return {
         ...session,
-        recentEvents: events.slice(-6).map((event) => ({
-          ts: event.ts,
-          kind: event.kind,
-          channel: event.channel,
-          text: event.text,
-          source: event.source,
-        })),
+        recentEvents: recentCharacterEvents(events),
       };
     }),
   );
 }
 
-async function readEvents(threadId: string) {
+async function readLogEvents(threadId: string) {
   if (!threadIdPattern.test(threadId)) return [];
   const rows = await sqliteJson<LogRow>(
     logsDb,
@@ -281,6 +511,12 @@ async function readEvents(threadId: string) {
     .reverse();
 }
 
+async function readEvents(thread: Pick<ThreadRow, 'id' | 'rollout_path'>) {
+  const rolloutEvents = await readRolloutEvents(thread);
+  if (rolloutEvents.length) return rolloutEvents.slice(-160);
+  return readLogEvents(thread.id);
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -290,7 +526,8 @@ export async function GET(request: Request) {
       requestedThreadId && threadIdPattern.test(requestedThreadId)
         ? requestedThreadId
         : sessions.find((session) => session.cwd === process.cwd())?.id || sessions[0]?.id;
-    const events = threadId ? await readEvents(threadId) : [];
+    const thread = threadId ? await readThread(threadId) : null;
+    const events = thread ? await readEvents(thread) : [];
 
     return NextResponse.json({
       available: true,

@@ -21,13 +21,14 @@ type LocalWorldContextValue = {
 
 const LocalWorldContext = createContext<LocalWorldContextValue | null>(null);
 
-async function loadSessions(url: string, source: 'codex' | 'claude'): Promise<AgentSession[]> {
+async function loadSessions(url: string, source: 'codex' | 'claude'): Promise<AgentSession[] | null> {
   try {
     const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
     const data = (await response.json()) as { sessions?: Array<Record<string, unknown>> };
     return (data.sessions ?? []).map((session) => ({ ...session, source } as AgentSession));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -47,7 +48,14 @@ export function LocalWorldProvider({ children }: { children: ReactNode }) {
         loadSessions('/api/codex-local', 'codex'),
         loadSessions('/api/claude-local', 'claude'),
       ]);
-      if (!cancelled) setAgentSessions([...codex, ...claude]);
+      if (!cancelled && (codex || claude)) {
+        const nextSessions = [...(codex ?? []), ...(claude ?? [])];
+        setAgentSessions((currentSessions) =>
+          nextSessions.length > 0 || currentSessions.length === 0
+            ? nextSessions
+            : currentSessions,
+        );
+      }
     };
     void refresh();
     const interval = setInterval(() => void refresh(), 2000);

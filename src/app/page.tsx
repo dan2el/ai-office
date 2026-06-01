@@ -27,9 +27,9 @@ export default function Home() {
 
         <AgentMonitor />
 
-        <footer className="flex flex-col left-0 w-full flex items-center mt-4 gap-6 p-6 flex-wrap pointer-events-none">
-          <div className="flex-col jistify-center">
-            <div className="mx-auto flex flex-grow justify-center gap-4 pointer-events-none">
+        <footer className="left-0 mt-4 flex w-full flex-col items-center gap-6 p-6 pointer-events-none">
+          <div className="flex w-full max-w-[1400px] flex-col items-center">
+            <div className="mx-auto grid w-full grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 pointer-events-none sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
               {players.map((player) => (
                 <PlayerButton
                   key={player._id}

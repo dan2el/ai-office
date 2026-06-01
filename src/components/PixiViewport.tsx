@@ -43,6 +43,17 @@ const PixiViewportComponent = PixiComponent('Viewport', {
         viewport[p] = newProps[p];
       }
     });
+    // Re-fit whenever the container size changes (first measure, window resize),
+    // so the whole map stays visible without manual dragging.
+    if (
+      (newProps.screenWidth !== oldProps.screenWidth ||
+        newProps.screenHeight !== oldProps.screenHeight) &&
+      newProps.worldWidth &&
+      newProps.screenWidth
+    ) {
+      viewport.fit();
+      viewport.moveCenter(newProps.worldWidth / 2, newProps.worldHeight / 2);
+    }
   },
 });
 

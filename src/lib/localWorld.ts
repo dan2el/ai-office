@@ -337,17 +337,44 @@ function projectLabel(cwd: string): string {
   return last;
 }
 
-function eventToMessage(event: AgentEvent, playerId: LocalId, name: string): LocalMessage {
+function eventFromName(event: AgentEvent, session: AgentSession) {
+  if (event.source === 'user') return 'You';
+  if (event.source === 'tool') return event.channel?.toUpperCase() ?? 'Tool';
+  if (event.source === 'subagent') return 'Subagent';
+  return session.source === 'claude' ? 'Claude' : 'Codex';
+}
+
+function eventToMessage(event: AgentEvent, playerId: LocalId, session: AgentSession): LocalMessage {
   const prefix = event.channel && event.kind !== 'message' ? `[${event.channel}] ` : '';
   return {
     type: 'responded',
     from: playerId,
-    fromName: name,
+    fromName: eventFromName(event, session),
     to: [],
     toNames: [],
     ts: event.ts,
     content: `${prefix}${event.text ?? event.kind}`,
   };
+}
+
+function isConversationEvent(event: AgentEvent) {
+  const text = event.text?.trim() ?? '';
+  if (!text) return false;
+  if (event.channel === 'turn') return false;
+  if (/turn usage:|decision: approved|finished: success=true|call started$/i.test(text)) {
+    return false;
+  }
+  return ['message', 'tool', 'subagent', 'error'].includes(event.kind);
+}
+
+function conversationEvents(events: AgentEvent[] | undefined) {
+  const filtered = (events ?? []).filter(isConversationEvent);
+  const primary = filtered.filter((event) =>
+    ['message', 'subagent', 'error'].includes(event.kind),
+  );
+  if (primary.length) return primary.slice(-8);
+  if (filtered.length) return filtered.slice(-8);
+  return (events ?? []).filter((event) => event.text?.trim()).slice(-3);
 }
 
 export function createLocalWorld(
@@ -395,7 +422,7 @@ export function createLocalWorld(
 
   if (agentSessions.length === 0) {
     // No live agent sessions yet — fall back to the seeded demo office.
-    const messages = makeMessages(now);
+    const messages = makeMessages(localStartTs);
     const latestMessageByPlayer = new Map<LocalId, LocalMessage>();
     for (const message of messages) {
       latestMessageByPlayer.set(message.from, message);
@@ -419,7 +446,7 @@ export function createLocalWorld(
             thinking: index % 3 === 0,
             lastPlan: {
               plan: 'Keep the local AI Office running without Convex.',
-              ts: now - 60_000,
+              ts: localStartTs - 60_000,
             },
             lastChat: lastMessage ? { message: lastMessage, conversationId } : undefined,
           },
@@ -481,8 +508,8 @@ export function createLocalWorld(
       const running = session.status === 'running';
       const role = session.parentThreadId ? 'subagent' : 'lead';
       const conversationKey = `local:conversation:${session.id}`;
-      const sessionMessages = (session.recentEvents ?? []).map((event) =>
-        eventToMessage(event, playerId, session.name),
+      const sessionMessages = conversationEvents(session.recentEvents).map((event) =>
+        eventToMessage(event, playerId, session),
       );
       if (sessionMessages.length) messages[conversationKey] = sessionMessages;
       const lastMessage = sessionMessages[sessionMessages.length - 1];
