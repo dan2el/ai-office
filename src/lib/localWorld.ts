@@ -174,6 +174,41 @@ function findFloorSpot(center: Position, occupied: Set<string>): Position {
   return center;
 }
 
+// A small loop of nearby floor tiles around a home, so characters mill about
+// their team area instead of standing still (stays within the room).
+function wanderRoute(home: Position): Position[] {
+  const deltas: Array<[number, number]> = [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+  ];
+  const spots = deltas
+    .map(([dx, dy]) => ({ x: home.x + dx, y: home.y + dy }))
+    .filter((p) => walkableTiles.has(`${p.x},${p.y}`));
+  return spots.length >= 2 ? spots : [home];
+}
+
+function wanderMotion(home: Position, index: number, now: number, active: boolean): Motion {
+  const route = wanderRoute(home);
+  if (route.length < 2) return idleMotion(home);
+  const segmentCount = route.length - 1;
+  const cycleMs = (active ? 11_000 : 24_000) + (index % 9) * 900;
+  const segmentMs = cycleMs / segmentCount;
+  const elapsed = (now - localStartTs + (index % 13) * 1_500) % cycleMs;
+  const segment = Math.min(segmentCount - 1, Math.floor(elapsed / segmentMs));
+  const segmentStartTs = now - (elapsed % segmentMs);
+  return {
+    type: 'walking',
+    route: [route[segment], route[segment + 1]],
+    ignore: [],
+    startTs: segmentStartTs,
+    targetEndTs: segmentStartTs + segmentMs,
+  };
+}
+
 function patrolRoute(position: Position, index: number) {
   const dx = index % 2 === 0 ? 2 : -2;
   const dy = index % 3 === 0 ? 2 : -1;
@@ -527,7 +562,7 @@ export function createLocalWorld(
         agentId: `local:agent:${session.id}`,
         characterId,
         identity: `${projectName} · ${session.source.toUpperCase()} · ${role}`,
-        motion: idleMotion(position),
+        motion: wanderMotion(position, hashString(session.id), now, running),
         thinking: running,
         lastPlan: { plan: session.name, ts: session.updatedAt },
         lastChat: lastMessage
