@@ -58,6 +58,7 @@ export const Player = ({
           (playerState.lastChat.message.ts ?? 0) > time.current - SpeechDurationMs
         }
         isSleeping={playerState.sleeping ?? false}
+        scaleFactor={playerState.isSubagent ? 0.72 : 1}
         textureUrl={character.textureUrl}
         spritesheetData={character.spritesheetData}
         speed={character.speed}

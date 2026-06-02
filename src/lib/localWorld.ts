@@ -86,6 +86,7 @@ export type LocalPlayerState = {
   lastPlan?: { plan: string; ts: number };
   lastChat?: { message: LocalMessage; conversationId: LocalId };
   sleeping?: boolean;
+  isSubagent?: boolean;
 };
 
 export type LocalTeam = {
@@ -569,6 +570,7 @@ export function createLocalWorld(
           : idleMotion(position),
         thinking: running,
         sleeping: !running,
+        isSubagent: role === 'subagent',
         lastPlan: { plan: session.name, ts: session.updatedAt },
         lastChat: lastMessage
           ? { message: lastMessage, conversationId: conversationKey }

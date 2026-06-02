@@ -14,6 +14,7 @@ export const Character = ({
   isSpeaking = false,
   isSleeping = false,
   speed = 0.1,
+  scaleFactor = 1,
   onClick,
 }: {
   // Path to the texture packed image.
@@ -33,6 +34,8 @@ export const Character = ({
   isSleeping?: boolean;
   // The speed of the animation. Can be tuned depending on the side and speed of the NPC.
   speed?: number;
+  // Sprite scale multiplier — subagents render a bit smaller than leads.
+  scaleFactor?: number;
   onClick: () => void;
 }) => {
   const [spriteSheet, setSpriteSheet] = useState<Spritesheet>();
@@ -84,7 +87,11 @@ export const Character = ({
         textures={spriteSheet.animations[direction]}
         animationSpeed={speed}
         // If the orientation is 90 (facing right), we need to flip the sprite.
-        scale={roundedOrientation === 0 ? { x: -1, y: 1 } : { x: 1, y: 1 }}
+        scale={
+          roundedOrientation === 0
+            ? { x: -scaleFactor, y: scaleFactor }
+            : { x: scaleFactor, y: scaleFactor }
+        }
         anchor={{ x: 0.5, y: 0.5 }}
       />
     </Container>
