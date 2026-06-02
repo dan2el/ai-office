@@ -57,6 +57,7 @@ export const Player = ({
           playerState.lastChat?.message.type === 'responded' &&
           (playerState.lastChat.message.ts ?? 0) > time.current - SpeechDurationMs
         }
+        isSleeping={playerState.sleeping ?? false}
         textureUrl={character.textureUrl}
         spritesheetData={character.spritesheetData}
         speed={character.speed}

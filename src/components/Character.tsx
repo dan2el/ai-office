@@ -12,6 +12,7 @@ export const Character = ({
   isMoving = false,
   isThinking = false,
   isSpeaking = false,
+  isSleeping = false,
   speed = 0.1,
   onClick,
 }: {
@@ -28,6 +29,8 @@ export const Character = ({
   isThinking?: boolean;
   // Shows a speech bubble if true.
   isSpeaking?: boolean;
+  // Shows a sleep bubble if true (idle sessions resting).
+  isSleeping?: boolean;
   // The speed of the animation. Can be tuned depending on the side and speed of the NPC.
   speed?: number;
   onClick: () => void;
@@ -71,6 +74,9 @@ export const Character = ({
       {isSpeaking && (
         // TODO: We'll eventually have separate assets for thinking and speech animations.
         <Text x={18} y={-10} scale={0.8} text={'💬'} anchor={{ x: 0.5, y: 0.5 }} />
+      )}
+      {isSleeping && (
+        <Text x={16} y={-12} scale={0.8} text={'💤'} anchor={{ x: 0.5, y: 0.5 }} />
       )}
       <AnimatedSprite
         ref={ref}

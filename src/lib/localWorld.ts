@@ -85,6 +85,7 @@ export type LocalPlayerState = {
   thinking: boolean;
   lastPlan?: { plan: string; ts: number };
   lastChat?: { message: LocalMessage; conversationId: LocalId };
+  sleeping?: boolean;
 };
 
 export type LocalTeam = {
@@ -562,8 +563,12 @@ export function createLocalWorld(
         agentId: `local:agent:${session.id}`,
         characterId,
         identity: `${projectName} · ${session.source.toUpperCase()} · ${role}`,
-        motion: wanderMotion(position, hashString(session.id), now, running),
+        // Working sessions wander; idle sessions rest in place (asleep).
+        motion: running
+          ? wanderMotion(position, hashString(session.id), now, true)
+          : idleMotion(position),
         thinking: running,
+        sleeping: !running,
         lastPlan: { plan: session.name, ts: session.updatedAt },
         lastChat: lastMessage
           ? { message: lastMessage, conversationId: conversationKey }

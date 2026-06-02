@@ -25,7 +25,7 @@ const PixiViewportComponent = PixiComponent('Viewport', {
       .clamp({ direction: 'all', underflow: 'center' })
       .clampZoom({
         minWidth: 50,
-        maxWidth: viewportProps.worldWidth ?? 800,
+        maxWidth: (viewportProps.worldWidth ?? 800) * 3,
       });
 
     // Start fully zoomed out so the whole office fits on screen.
