@@ -87,6 +87,15 @@ export type LocalPlayerState = {
   lastChat?: { message: LocalMessage; conversationId: LocalId };
   sleeping?: boolean;
   isSubagent?: boolean;
+  // All sessions of this project (the lead carries the whole team's list).
+  projectSessions?: Array<{
+    id: string;
+    name: string;
+    status: string;
+    source: string;
+    role: 'lead' | 'subagent';
+    conversationId: LocalId;
+  }>;
 };
 
 export type LocalTeam = {
@@ -121,7 +130,6 @@ const teamAreas: Position[] = [
   { x: 10, y: 14 },
   { x: 18, y: 14 },
 ];
-const maxTeamSize = 5;
 
 const conversationId = 'local:conversation:office-floor';
 
@@ -529,7 +537,7 @@ export function createLocalWorld(
   teamCwds.forEach((cwd, teamIndex) => {
     const center = teamAreas[teamIndex];
     const projectName = projectLabel(cwd);
-    const members = (byProject.get(cwd) ?? []).slice(0, maxTeamSize);
+    const members = (byProject.get(cwd) ?? []).slice(0, 16);
     teams.push({
       id: `local:team:${cwd}`,
       name: projectName,
@@ -537,46 +545,60 @@ export function createLocalWorld(
       source: members[0]?.source ?? 'claude',
     });
 
-    members.forEach((session) => {
-      const playerId = `local:player:${session.id}`;
-      const characterDef = characterData[hashString(session.id) % characterData.length];
-      const characterId = characterIdsByName[characterDef.name];
-      const position = findFloorSpot(center, occupied);
-      const running = session.status === 'running';
-      const role = session.parentThreadId ? 'subagent' : 'lead';
+    // One character per project (the lead). Every session of the project lives
+    // on the lead and shows up as a list when you click it.
+    const lead = members[0];
+    if (!lead) return;
+    const playerId = `local:player:${cwd}`;
+    const characterDef = characterData[hashString(cwd) % characterData.length];
+    const characterId = characterIdsByName[characterDef.name];
+    const position = findFloorSpot(center, occupied);
+    const running = members.some((session) => session.status === 'running');
+
+    const projectSessions = members.map((session) => {
       const conversationKey = `local:conversation:${session.id}`;
       const sessionMessages = conversationEvents(session.recentEvents).map((event) =>
         eventToMessage(event, playerId, session),
       );
       if (sessionMessages.length) messages[conversationKey] = sessionMessages;
-      const lastMessage = sessionMessages[sessionMessages.length - 1];
-
-      players.push({
-        _id: playerId,
+      return {
+        id: session.id,
         name: session.name,
-        worldId,
-        agentId: `local:agent:${session.id}`,
-        characterId,
-      });
-      playerStates[playerId] = {
-        id: playerId,
-        name: session.name,
-        agentId: `local:agent:${session.id}`,
-        characterId,
-        identity: `${projectName} · ${session.source.toUpperCase()} · ${role}`,
-        // Working sessions wander; idle sessions rest in place (asleep).
-        motion: running
-          ? wanderMotion(position, hashString(session.id), now, true)
-          : idleMotion(position),
-        thinking: running,
-        sleeping: !running,
-        isSubagent: role === 'subagent',
-        lastPlan: { plan: session.name, ts: session.updatedAt },
-        lastChat: lastMessage
-          ? { message: lastMessage, conversationId: conversationKey }
-          : undefined,
+        status: session.status,
+        source: session.source,
+        role: (session.parentThreadId ? 'subagent' : 'lead') as 'lead' | 'subagent',
+        conversationId: conversationKey,
       };
     });
+
+    const leadConversation = `local:conversation:${lead.id}`;
+    const leadMessages = messages[leadConversation] ?? [];
+    const lastMessage = leadMessages[leadMessages.length - 1];
+
+    players.push({
+      _id: playerId,
+      name: projectName,
+      worldId,
+      agentId: `local:agent:${cwd}`,
+      characterId,
+    });
+    playerStates[playerId] = {
+      id: playerId,
+      name: projectName,
+      agentId: `local:agent:${cwd}`,
+      characterId,
+      identity: `${projectName} · ${projectSessions.length} sessions`,
+      // Wanders while any session runs; rests (asleep) when all are idle.
+      motion: running
+        ? wanderMotion(position, hashString(cwd), now, true)
+        : idleMotion(position),
+      thinking: running,
+      sleeping: !running,
+      projectSessions,
+      lastChat: lastMessage
+        ? { message: lastMessage, conversationId: leadConversation }
+        : undefined,
+    };
   });
 
   return { ...worldShell, players, playerStates, messages, teams };

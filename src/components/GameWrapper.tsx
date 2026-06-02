@@ -28,7 +28,7 @@ export default function GameWrapper({
       {/* Right column area */}
       <div className="flex flex-col overflow-y-auto shrink-0 px-4 py-6 sm:px-6 lg:w-96 xl:pr-6 bg-brown-300 text-brown-100">
         {selectedPlayer ? (
-          <PlayerDetails playerId={selectedPlayer} />
+          <PlayerDetails key={selectedPlayer} playerId={selectedPlayer} />
         ) : (
           <div className="h-full text-xl flex text-center items-center p-4">
             Click on a character to see chat history.

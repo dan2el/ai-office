@@ -14,9 +14,16 @@ if ! pgrep -f '/Applications/Claude.app' >/dev/null 2>&1 \
   exit 0
 fi
 
-# Already up? Nothing to do.
+# Already up and healthy (2xx)? Nothing to do.
 if curl -sf "http://localhost:${PORT}" -o /dev/null 2>/dev/null; then
   exit 0
+fi
+
+# Port is held but not healthy (stale/zombie dev server) — clear it first.
+stale=$(lsof -ti "tcp:${PORT}" 2>/dev/null)
+if [ -n "$stale" ]; then
+  kill $stale 2>/dev/null || true
+  sleep 1
 fi
 
 cd "$DIR" 2>/dev/null || exit 0
