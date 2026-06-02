@@ -31,10 +31,16 @@ export const Game = ({
     () =>
       new PIXI.TextStyle({
         fontFamily: 'monospace',
-        fontSize: 13,
-        fill: 0xffffff,
-        stroke: 0x1a1118,
-        strokeThickness: 4,
+        fontSize: 17,
+        fontWeight: 'bold',
+        fill: 0xffe6a0,
+        stroke: 0x141018,
+        strokeThickness: 6,
+        dropShadow: true,
+        dropShadowColor: 0x000000,
+        dropShadowAlpha: 0.65,
+        dropShadowBlur: 3,
+        dropShadowDistance: 2,
       }),
     [],
   );
