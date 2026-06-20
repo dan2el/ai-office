@@ -269,38 +269,24 @@ function limitStateFromLines(lines: TranscriptLine[]) {
 function isCharacterEvent(event: MonitorEvent) {
   const text = event.text ?? '';
   if (!text.trim()) return false;
-  if (event.kind === 'message' || event.kind === 'error' || event.kind === 'subagent') return true;
+  if (['message', 'error', 'subagent', 'status'].includes(event.kind)) return true;
   if (event.kind !== 'tool') return false;
   if (event.channel?.startsWith('mcp__Claude_Preview__')) return false;
   if (event.channel === 'TodoWrite') return false;
   return true;
 }
 
-function isPrimaryCharacterEvent(event: MonitorEvent) {
-  return ['message', 'error', 'subagent'].includes(event.kind) && Boolean(event.text?.trim());
-}
-
 function recentCharacterEvents(events: MonitorEvent[]) {
-  const primary = events.filter(isPrimaryCharacterEvent);
-  if (primary.length) {
-    return primary.slice(-8).map((event) => ({
-      ts: event.ts,
-      kind: event.kind,
-      channel: event.channel ?? null,
-      text: event.text ?? null,
-      source: event.source,
-    }));
-  }
   const useful = events.filter(isCharacterEvent);
-  return (useful.length ? useful : events.filter((event) => event.text?.trim()))
-    .slice(-8)
-    .map((event) => ({
-      ts: event.ts,
-      kind: event.kind,
-      channel: event.channel ?? null,
-      text: event.text ?? null,
-      source: event.source,
-    }));
+  const chosen = useful.length ? useful : events.filter((event) => event.text?.trim());
+  return chosen.slice(-24).map((event) => ({
+    id: event.id,
+    ts: event.ts,
+    kind: event.kind,
+    channel: event.channel ?? null,
+    text: event.text ?? null,
+    source: event.source,
+  }));
 }
 
 function eventsFromLines(

@@ -645,7 +645,7 @@ function useAgentSource(endpoint: string, threadId: string | null, refreshInterv
   return data;
 }
 
-type MonitorTab = 'all' | 'tasks' | 'messages' | 'events';
+type MonitorTab = 'all' | 'messages' | 'tools' | 'system';
 
 type ActivityItem = {
   id: string;
@@ -655,9 +655,12 @@ type ActivityItem = {
 
 function matchesMonitorTab(event: MonitorEvent, tab: MonitorTab) {
   if (tab === 'all') return true;
-  if (tab === 'tasks') return ['tool', 'subagent', 'status'].includes(event.kind);
+  // Messages: agent <-> user conversation only.
   if (tab === 'messages') return event.kind === 'message';
-  return ['git', 'file', 'error', 'stderr'].includes(event.kind);
+  // Tools: tool calls and spawned subagents.
+  if (tab === 'tools') return event.kind === 'tool' || event.kind === 'subagent';
+  // System: everything else — status updates, errors, file/git/stderr activity.
+  return !['message', 'tool', 'subagent'].includes(event.kind);
 }
 
 // Strip common markdown so one-line summaries read cleanly (no raw ** or `).
@@ -875,9 +878,9 @@ export default function AgentMonitor({
             {(
               [
                 ['all', 'All'],
-                ['tasks', 'Tasks'],
                 ['messages', 'Messages'],
-                ['events', 'Events'],
+                ['tools', 'Tools'],
+                ['system', 'System'],
               ] as const
             ).map(([tab, label]) => (
               <button
