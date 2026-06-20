@@ -189,7 +189,7 @@ export default function Home() {
             {activeSection === 'help' && <HelpPanel />}
 
             {isMonitorPage && (
-              <div className="min-h-0 p-4">
+              <div className="h-full min-h-0 p-4">
                 <AgentMonitor />
               </div>
             )}

@@ -937,7 +937,7 @@ export default function AgentMonitor({
                       {initialsFor(name)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-slate-950">
+                      <span className="line-clamp-2 text-sm text-slate-950">
                         <span className="font-semibold">{name}</span>
                         <span className="text-slate-600"> — {activityDescription(event, session.source)}</span>
                       </span>
@@ -1008,8 +1008,8 @@ export default function AgentMonitor({
   }
 
   return (
-    <section className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="grid h-[760px] min-h-0 grid-rows-[240px_minmax(0,1fr)] overflow-hidden bg-white min-[1800px]:grid-cols-[280px_minmax(0,1fr)] min-[1800px]:grid-rows-none">
+    <section className="flex h-full min-h-[560px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(160px,34%)_minmax(0,1fr)] overflow-hidden bg-white xl:grid-cols-[320px_minmax(0,1fr)] xl:grid-rows-none">
         <aside className="min-h-0 overflow-y-auto border-b border-slate-200 bg-slate-50 p-4 min-[1800px]:border-b-0 min-[1800px]:border-r">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
