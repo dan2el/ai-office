@@ -26,8 +26,9 @@ export default function Home() {
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
   const showWorkspace = workspaceSections.includes(activeSection);
-  const showMonitor = showWorkspace && !focusMode;
-  const showAgentsTable = showWorkspace && !focusMode && activeSection !== 'monitor';
+  const isMonitorPage = showWorkspace && !focusMode && activeSection === 'monitor';
+  const showRightMonitor = showWorkspace && !focusMode && activeSection !== 'monitor';
+  const showAgentsTable = showRightMonitor;
 
   const scrollToSection = useCallback((section: AppSection) => {
     const target =
@@ -180,14 +181,20 @@ export default function Home() {
         <div
           className={clsx(
             'grid min-h-0 flex-1',
-            showMonitor && 'lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]',
+            showRightMonitor && 'lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]',
           )}
         >
           <div ref={mainScrollRef} className="min-h-0 overflow-y-auto">
             {activeSection === 'settings' && <SettingsPanel />}
             {activeSection === 'help' && <HelpPanel />}
 
-            {showWorkspace && (
+            {isMonitorPage && (
+              <div className="min-h-0 p-4">
+                <AgentMonitor />
+              </div>
+            )}
+
+            {showWorkspace && activeSection !== 'monitor' && (
               <>
                 <section
                   id="live-office"
@@ -227,7 +234,7 @@ export default function Home() {
             )}
           </div>
 
-          {showMonitor && (
+          {showRightMonitor && (
             <aside
               id="monitor"
               ref={monitorRef}
