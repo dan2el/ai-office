@@ -1,4 +1,4 @@
-import { Descriptions, characters as characterData } from '../../convex/characterdata/data';
+import { characters as characterData } from '../../convex/characterdata/data';
 import { bgtiles, objmap, tiledim, tilefiledim, tilesetpath } from '../../convex/maps/firstmap';
 
 export type LocalId = string;
@@ -115,6 +115,8 @@ export type LocalWorldState = {
   teams: LocalTeam[];
 };
 
+export type SelectPlayer = (playerId: LocalId) => void;
+
 const worldId = 'local:world:office';
 const mapId = 'local:map:first-office';
 const localStartTs = Date.now();
@@ -131,27 +133,9 @@ const teamAreas: Position[] = [
   { x: 18, y: 14 },
 ];
 
-const conversationId = 'local:conversation:office-floor';
-
-const playerIdsByName = Object.fromEntries(
-  Descriptions.map((description) => [description.name, `local:player:${description.name}`]),
-);
-
 const characterIdsByName = Object.fromEntries(
   characterData.map((character) => [character.name, `local:character:${character.name}`]),
 );
-
-function identityFor(name: string) {
-  const description = Descriptions.find((entry) => entry.name === name);
-  return (
-    description?.memories.find((memory) => memory.type === 'identity')?.description ??
-    `${name} works in the AI Office.`
-  );
-}
-
-function clampGrid(value: number) {
-  return Math.max(4, Math.min(21, value));
-}
 
 // Walkable floor tiles: objmap === -1 means no furniture/wall on that tile.
 const walkableTiles: Set<string> = (() => {
@@ -217,116 +201,6 @@ function wanderMotion(home: Position, index: number, now: number, active: boolea
     startTs: segmentStartTs,
     targetEndTs: segmentStartTs + segmentMs,
   };
-}
-
-function patrolRoute(position: Position, index: number) {
-  const dx = index % 2 === 0 ? 2 : -2;
-  const dy = index % 3 === 0 ? 2 : -1;
-  return [
-    position,
-    { x: clampGrid(position.x + dx), y: position.y },
-    { x: clampGrid(position.x + dx), y: clampGrid(position.y + dy) },
-    { x: position.x, y: clampGrid(position.y + dy) },
-    position,
-  ];
-}
-
-function motionFor(position: Position, index: number, now: number): Motion {
-  const route = patrolRoute(position, index);
-  const segmentCount = route.length - 1;
-  const cycleMs = 18_000 + index * 1_400;
-  const segmentMs = cycleMs / segmentCount;
-  const elapsed = (now - localStartTs + index * 1_700) % cycleMs;
-  const segment = Math.min(segmentCount - 1, Math.floor(elapsed / segmentMs));
-  const segmentStartTs = now - (elapsed % segmentMs);
-  return {
-    type: 'walking',
-    route: [route[segment], route[segment + 1]],
-    ignore: [],
-    startTs: segmentStartTs,
-    targetEndTs: segmentStartTs + segmentMs,
-  };
-}
-
-export function calculateFraction(start: number, end: number, ts: number): number {
-  if (start === end) return 0;
-  const progress = (ts - start) / (end - start);
-  return Math.max(Math.min(1, progress), 0);
-}
-
-export function calculateOrientation(start: Position, end: Position): number {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  return dx ? (dx > 0 ? 0 : 180) : dy >= 0 ? 270 : 90;
-}
-
-export function getPoseFromMotion(motion: Motion, ts: number): Pose {
-  if (motion.type === 'stopped') return motion.pose;
-  const [start, end] = motion.route;
-  const fraction = calculateFraction(motion.startTs, motion.targetEndTs, ts);
-  return {
-    position: {
-      x: start.x + (end.x - start.x) * fraction,
-      y: start.y + (end.y - start.y) * fraction,
-    },
-    orientation:
-      ts >= motion.targetEndTs && motion.endOrientation !== undefined
-        ? motion.endOrientation
-        : calculateOrientation(start, end),
-  };
-}
-
-function makeMessages(now: number): LocalMessage[] {
-  const michael = playerIdsByName.Michael;
-  const pam = playerIdsByName.Pam;
-  const jim = playerIdsByName.Jim;
-  const dwight = playerIdsByName.Dwight;
-  return [
-    {
-      type: 'started',
-      from: michael,
-      fromName: 'Michael',
-      to: [pam, jim, dwight],
-      toNames: ['Pam', 'Jim', 'Dwight'],
-      ts: now - 90_000,
-    },
-    {
-      type: 'responded',
-      from: michael,
-      fromName: 'Michael',
-      to: [pam, jim, dwight],
-      toNames: ['Pam', 'Jim', 'Dwight'],
-      ts: now - 78_000,
-      content: 'Local mode meeting. No cloud database, still very official.',
-    },
-    {
-      type: 'responded',
-      from: jim,
-      fromName: 'Jim',
-      to: [michael, pam, dwight],
-      toNames: ['Michael', 'Pam', 'Dwight'],
-      ts: now - 56_000,
-      content: 'So the office is running entirely on this machine now?',
-    },
-    {
-      type: 'responded',
-      from: dwight,
-      fromName: 'Dwight',
-      to: [michael, pam, jim],
-      toNames: ['Michael', 'Pam', 'Jim'],
-      ts: now - 34_000,
-      content: 'Correct. Superior operational security.',
-    },
-    {
-      type: 'responded',
-      from: pam,
-      fromName: 'Pam',
-      to: [michael, jim, dwight],
-      toNames: ['Michael', 'Jim', 'Dwight'],
-      ts: now - 18_000,
-      content: 'At least the monitor finally looks like people are working.',
-    },
-  ];
 }
 
 export type AgentEvent = {
@@ -446,14 +320,6 @@ export function createLocalWorld(
       },
     ]),
   );
-
-  const demoPlayers = Descriptions.map((description) => ({
-    _id: playerIdsByName[description.name],
-    name: description.name,
-    worldId,
-    agentId: `local:agent:${description.name}`,
-    characterId: characterIdsByName[description.character],
-  }));
 
   const worldShell = {
     world: {

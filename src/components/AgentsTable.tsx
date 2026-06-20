@@ -4,8 +4,7 @@ import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import { useAppPreferences } from './AppPreferencesProvider';
 import { useLocalWorld } from './LocalWorldProvider';
-import { SelectPlayer } from './Player';
-import { LocalId } from '@/lib/localWorld';
+import { LocalId, SelectPlayer } from '@/lib/localWorld';
 import { initialsFor, sourceLabel } from '@/lib/agentDisplay';
 
 function roleFor(identity: string, source?: string) {

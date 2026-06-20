@@ -6,6 +6,7 @@ import { useAppPreferences } from './AppPreferencesProvider';
 import { useLocalWorld } from './LocalWorldProvider';
 import { LocalId } from '@/lib/localWorld';
 import { sessionMatchesPlayer } from '@/lib/monitorSessions';
+import { initialsFor } from '@/lib/agentDisplay';
 
 type MonitorSource = 'codex' | 'claude' | 'cursor';
 
@@ -667,12 +668,6 @@ function activityDescription(event: MonitorEvent, source: MonitorSource) {
   return event.kind;
 }
 
-function initialsForName(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  return Array.from(trimmed).slice(0, 2).join('').toUpperCase();
-}
-
 function buildActivityFeed(sessions: MonitorSession[], tab: MonitorTab): ActivityItem[] {
   const items: ActivityItem[] = [];
   for (const session of sessions) {
@@ -891,7 +886,8 @@ export default function AgentMonitor({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {monitorError && (
             <div className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              Local monitor unavailable: {monitorError}
+              Couldn&apos;t read local sessions yet — the dev server may still be starting. This
+              retries automatically.
             </div>
           )}
 
@@ -921,7 +917,7 @@ export default function AgentMonitor({
                     )}
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs font-bold text-teal-800">
-                      {initialsForName(name)}
+                      {initialsFor(name)}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm text-slate-950">
@@ -1011,7 +1007,8 @@ export default function AgentMonitor({
           <div className="space-y-2">
             {monitorError && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                Local monitor unavailable: {monitorError}
+                Couldn&apos;t read local sessions yet — the dev server may still be starting. This
+                retries automatically.
               </div>
             )}
             {sessions.length === 0 && (

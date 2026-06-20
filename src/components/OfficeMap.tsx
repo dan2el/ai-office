@@ -3,8 +3,7 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useLocalWorld } from './LocalWorldProvider';
-import { SelectPlayer } from './Player';
-import { LocalId, LocalPlayerState } from '@/lib/localWorld';
+import { LocalId, LocalPlayerState, SelectPlayer } from '@/lib/localWorld';
 import { initialsFor, sourceTone } from '@/lib/agentDisplay';
 
 function clampPercent(value: number) {
