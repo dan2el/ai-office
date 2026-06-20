@@ -660,8 +660,22 @@ function matchesMonitorTab(event: MonitorEvent, tab: MonitorTab) {
   return ['git', 'file', 'error', 'stderr'].includes(event.kind);
 }
 
+// Strip common markdown so one-line summaries read cleanly (no raw ** or `).
+function stripMarkdown(value: string): string {
+  return value
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/(^|[\s(])[*_]([^*_]+)[*_]/g, '$1$2')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function activityDescription(event: MonitorEvent, source: MonitorSource) {
-  const text = (event.text || eventDataText(event.data)).replace(/\s+/g, ' ').trim();
+  const text = stripMarkdown(event.text || eventDataText(event.data));
   if (text) return text.length > 96 ? `${text.slice(0, 93)}…` : text;
   if (event.kind === 'tool') return `${shortToolName(event.channel, source)} tool call`;
   if (event.kind === 'subagent') return 'Subagent activity';
