@@ -8,9 +8,12 @@ panel, with a `source` badge per session. No cloud database is involved.
   through `/api/codex-local`.
 - Claude Code sessions come from the JSONL transcripts in
   `~/.claude/projects/<cwd-slug>/<sessionId>.jsonl` through `/api/claude-local`.
+- Cursor Agent sessions come from JSONL transcripts in
+  `~/.cursor/projects/<project-slug>/agent-transcripts/<sessionId>/<sessionId>.jsonl`
+  through `/api/cursor-local`.
 
-Both routes return the same `{ available, threadId, sessions, events }` shape,
-so the monitor merges the two streams and sorts sessions by last activity.
+All three routes return the same `{ available, threadId, sessions, events }` shape,
+so the monitor merges the streams and sorts sessions by last activity.
 
 ## Watch Current Work
 

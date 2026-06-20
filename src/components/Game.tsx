@@ -12,7 +12,6 @@ export const ViewportContext = createContext<RefObject<Viewport> | null>(null);
 
 // Disabling SSR for these since they don't work server side.
 const PixiViewport = dynamic(() => import('./PixiViewport'), { ssr: false });
-const Sound = dynamic(() => import('./Sound'), { ssr: false });
 
 export const Game = ({
   setSelectedPlayer,
@@ -27,6 +26,8 @@ export const Game = ({
   const viewportRef = useRef<Viewport>(null);
   const offset = 0;
   const { players } = worldState;
+  const worldWidth = worldState.world.width * worldState.map.tileDim;
+  const worldHeight = worldState.world.height * worldState.map.tileDim;
   const teamLabelStyle = useMemo(
     () =>
       new PIXI.TextStyle({
@@ -53,63 +54,66 @@ export const Game = ({
   return (
     <ViewportContext.Provider value={viewportRef}>
 
-    <div className="container">
-      <Sound>
-        <Stage width={width} height={height} options={{ backgroundColor: 0x000000 }}>
-          <PixiViewport
-            screenWidth={width}
-            screenHeight={height}
-            worldWidth={worldState.map.tileSetDim}
-            worldHeight={worldState.map.tileSetDim}
-          >
-            <PixiStaticMap map={worldState.map}></PixiStaticMap>
-            <Graphics
-              draw={(g) => {
-                g.clear();
-                const t = worldState.map.tileDim;
-                worldState.teams.forEach((team) => {
-                  const color = team.source === 'codex' ? 0xc08552 : 0x4a8db5;
-                  g.beginFill(color, 0.1);
-                  g.lineStyle(2, color, 0.45);
-                  g.drawRoundedRect(
-                    (team.center.x - 2.5) * t,
-                    (team.center.y - 1.2) * t,
-                    5 * t,
-                    4 * t,
-                    10,
-                  );
-                  g.endFill();
-                });
-              }}
+    <div className="h-full w-full">
+      <Stage width={width} height={height} options={{ backgroundColor: 0x000000 }}>
+        <PixiViewport
+          screenWidth={width}
+          screenHeight={height}
+          worldWidth={worldWidth}
+          worldHeight={worldHeight}
+        >
+          <PixiStaticMap map={worldState.map}></PixiStaticMap>
+          <Graphics
+            draw={(g) => {
+              g.clear();
+              const t = worldState.map.tileDim;
+              worldState.teams.forEach((team) => {
+                const color =
+                  team.source === 'codex'
+                    ? 0xc08552
+                    : team.source === 'cursor'
+                      ? 0x9b6bb5
+                      : 0x4a8db5;
+                g.beginFill(color, 0.1);
+                g.lineStyle(2, color, 0.45);
+                g.drawRoundedRect(
+                  (team.center.x - 2.5) * t,
+                  (team.center.y - 1.2) * t,
+                  5 * t,
+                  4 * t,
+                  10,
+                );
+                g.endFill();
+              });
+            }}
+          />
+          {worldState.teams.map((team) => (
+            <Text
+              key={team.id}
+              text={team.name}
+              x={(team.center.x + 0.5) * worldState.map.tileDim}
+              y={(team.center.y - 1.2) * worldState.map.tileDim}
+              anchor={{ x: 0.5, y: 1 }}
+              style={teamLabelStyle}
             />
-            {worldState.teams.map((team) => (
-              <Text
-                key={team.id}
-                text={team.name}
-                x={(team.center.x + 0.5) * worldState.map.tileDim}
-                y={(team.center.y - 1.2) * worldState.map.tileDim}
-                anchor={{ x: 0.5, y: 1 }}
-                style={teamLabelStyle}
+          ))}
+          {players.map((player) => {
+            const playerState = getPlayerState(player._id);
+            const character = getCharacter(player.characterId);
+            if (!playerState || !character) return null;
+            return (
+              <Player
+                key={player._id}
+                playerState={playerState}
+                character={character}
+                offset={offset}
+                tileDim={worldState.map.tileDim}
+                onClick={setSelectedPlayer}
               />
-            ))}
-            {players.map((player) => {
-              const playerState = getPlayerState(player._id);
-              const character = getCharacter(player.characterId);
-              if (!playerState || !character) return null;
-              return (
-                <Player
-                  key={player._id}
-                  playerState={playerState}
-                  character={character}
-                  offset={offset}
-                  tileDim={worldState.map.tileDim}
-                  onClick={setSelectedPlayer}
-                />
-              );
-            })}
-          </PixiViewport>
-        </Stage>
-      </Sound>
+            );
+          })}
+        </PixiViewport>
+      </Stage>
     </div>
      
   </ViewportContext.Provider>

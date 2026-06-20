@@ -5,15 +5,14 @@
 
 import { PixiComponent, applyDefaultProps } from '@pixi/react';
 import * as PIXI from 'pixi.js';
+import { useEffect, useState } from 'react';
 import { LocalMap } from '@/lib/localWorld';
 
-export const PixiStaticMap = PixiComponent('StaticMap', {
-  create: ({ map }: { map: LocalMap }) => {
+const StaticMap = PixiComponent('StaticMap', {
+  create: ({ map, texture }: { map: LocalMap; texture: PIXI.Texture }) => {
     const numytiles = map.tileSetDim / map.tileDim;
-
-    const bt = PIXI.BaseTexture.from(map.tileSetUrl, {
-      scaleMode: PIXI.SCALE_MODES.NEAREST,
-    });
+    const bt = texture.baseTexture;
+    bt.scaleMode = PIXI.SCALE_MODES.NEAREST;
 
     const tiles = [];
     for (let x = 0; x < numytiles; x++) {
@@ -65,3 +64,27 @@ export const PixiStaticMap = PixiComponent('StaticMap', {
     applyDefaultProps(instance, oldProps, newProps);
   },
 });
+
+export function PixiStaticMap({ map }: { map: LocalMap }) {
+  const [texture, setTexture] = useState<PIXI.Texture | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTexture(null);
+
+    void (PIXI.Assets.load(map.tileSetUrl) as Promise<PIXI.Texture>)
+      .then((loadedTexture) => {
+        if (!cancelled) setTexture(loadedTexture);
+      })
+      .catch(() => {
+        if (!cancelled) setTexture(PIXI.Texture.from(map.tileSetUrl));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [map.tileSetUrl]);
+
+  if (!texture) return null;
+  return <StaticMap key={map.tileSetUrl} map={map} texture={texture} />;
+}

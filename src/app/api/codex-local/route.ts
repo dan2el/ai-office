@@ -13,6 +13,8 @@ const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const stateDb = path.join(codexHome, 'state_5.sqlite');
 const logsDb = path.join(codexHome, 'logs_2.sqlite');
 const threadIdPattern = /^[A-Za-z0-9-]+$/;
+const defaultEventLimit = 160;
+const handoffEventLimit = 1500;
 
 type SqlValue = string | number | null;
 
@@ -479,8 +481,9 @@ async function readSessions() {
   );
 }
 
-async function readLogEvents(threadId: string) {
+async function readLogEvents(threadId: string, eventLimit = 120) {
   if (!threadIdPattern.test(threadId)) return [];
+  const rowLimit = Math.min(Math.max(eventLimit * 3, 260), 5000);
   const rows = await sqliteJson<LogRow>(
     logsDb,
     `select id, ts, ts_nanos, level, target, feedback_log_body as body
@@ -493,7 +496,7 @@ async function readLogEvents(threadId: string) {
           or feedback_log_body like '%event.name="codex.tool_decision"%'
         )
       order by ts desc, ts_nanos desc, id desc
-      limit 260`,
+      limit ${rowLimit}`,
     [threadId],
   );
 
@@ -507,19 +510,20 @@ async function readLogEvents(threadId: string) {
       seen.add(key);
       return true;
     })
-    .slice(0, 120)
+    .slice(0, eventLimit)
     .reverse();
 }
 
-async function readEvents(thread: Pick<ThreadRow, 'id' | 'rollout_path'>) {
+async function readEvents(thread: Pick<ThreadRow, 'id' | 'rollout_path'>, eventLimit = defaultEventLimit) {
   const rolloutEvents = await readRolloutEvents(thread);
-  if (rolloutEvents.length) return rolloutEvents.slice(-160);
-  return readLogEvents(thread.id);
+  if (rolloutEvents.length) return rolloutEvents.slice(-eventLimit);
+  return readLogEvents(thread.id, eventLimit);
 }
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const eventLimit = url.searchParams.get('full') === '1' ? handoffEventLimit : defaultEventLimit;
     const sessions = await readSessions();
     const requestedThreadId = url.searchParams.get('threadId') || process.env.CODEX_THREAD_ID;
     const threadId =
@@ -527,13 +531,14 @@ export async function GET(request: Request) {
         ? requestedThreadId
         : sessions.find((session) => session.cwd === process.cwd())?.id || sessions[0]?.id;
     const thread = threadId ? await readThread(threadId) : null;
-    const events = thread ? await readEvents(thread) : [];
+    const events = thread ? await readEvents(thread, eventLimit) : [];
 
     return NextResponse.json({
       available: true,
       threadId,
       sessions,
       events,
+      eventLimit,
       updatedAt: Date.now(),
     });
   } catch (error) {

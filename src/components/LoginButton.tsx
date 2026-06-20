@@ -3,10 +3,8 @@ import { SignInButton } from '@clerk/nextjs';
 export default function LoginButton() {
   return (
     <SignInButton>
-      <button className="button text-white shadow-solid">
-        <div className="inline-block bg-clay-700">
-          <span>Log in</span>
-        </div>
+      <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+        Log in
       </button>
     </SignInButton>
   );

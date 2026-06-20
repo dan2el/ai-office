@@ -39,19 +39,39 @@ export const Character = ({
   onClick: () => void;
 }) => {
   const [spriteSheet, setSpriteSheet] = useState<Spritesheet>();
+  const [isTextureUnavailable, setIsTextureUnavailable] = useState(false);
   useEffect(() => {
+    let isCancelled = false;
     const parseSheet = async () => {
-      const sheet = new Spritesheet(
-        BaseTexture.from(textureUrl, {
-          scaleMode: PIXI.SCALE_MODES.NEAREST,
-        }),
-        spritesheetData,
-      );
-      await sheet.parse();
-      setSpriteSheet(sheet);
+      try {
+        const textureCheck = await fetch(textureUrl, { method: 'HEAD' }).catch(() => null);
+        if (!textureCheck?.ok) {
+          throw new Error(`Character texture not available: ${textureUrl}`);
+        }
+
+        const sheet = new Spritesheet(
+          BaseTexture.from(textureUrl, {
+            scaleMode: PIXI.SCALE_MODES.NEAREST,
+          }),
+          spritesheetData,
+        );
+        await sheet.parse();
+        if (!isCancelled) {
+          setSpriteSheet(sheet);
+          setIsTextureUnavailable(false);
+        }
+      } catch {
+        if (!isCancelled) {
+          setSpriteSheet(undefined);
+          setIsTextureUnavailable(true);
+        }
+      }
     };
     void parseSheet();
-  }, []);
+    return () => {
+      isCancelled = true;
+    };
+  }, [textureUrl, spritesheetData]);
 
   // The first "left" is "right" but reflected.
   const roundedOrientation = Math.round(orientation / 90);
@@ -66,7 +86,7 @@ export const Character = ({
     }
   }, [direction, isMoving]);
 
-  if (!spriteSheet) return null;
+  if (!spriteSheet && !isTextureUnavailable) return null;
 
   return (
     <Container x={x} y={y} interactive={true} pointerdown={onClick}>
@@ -81,19 +101,27 @@ export const Character = ({
       {isSleeping && (
         <Text x={16} y={-12} scale={0.8} text={'💤'} anchor={{ x: 0.5, y: 0.5 }} />
       )}
-      <AnimatedSprite
-        ref={ref}
-        isPlaying={isMoving}
-        textures={spriteSheet.animations[direction]}
-        animationSpeed={speed}
-        // If the orientation is 90 (facing right), we need to flip the sprite.
-        scale={
-          roundedOrientation === 0
-            ? { x: -scaleFactor, y: scaleFactor }
-            : { x: scaleFactor, y: scaleFactor }
-        }
-        anchor={{ x: 0.5, y: 0.5 }}
-      />
+      {spriteSheet ? (
+        <AnimatedSprite
+          ref={ref}
+          isPlaying={isMoving}
+          textures={spriteSheet.animations[direction]}
+          animationSpeed={speed}
+          // If the orientation is 90 (facing right), we need to flip the sprite.
+          scale={
+            roundedOrientation === 0
+              ? { x: -scaleFactor, y: scaleFactor }
+              : { x: scaleFactor, y: scaleFactor }
+          }
+          anchor={{ x: 0.5, y: 0.5 }}
+        />
+      ) : (
+        <Text
+          text={'🙂'}
+          anchor={{ x: 0.5, y: 0.5 }}
+          scale={{ x: scaleFactor, y: scaleFactor }}
+        />
+      )}
     </Container>
   );
 };

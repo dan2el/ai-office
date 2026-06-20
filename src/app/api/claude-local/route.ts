@@ -16,6 +16,7 @@ const projectsDir = path.join(claudeHome, 'projects');
 const sessionIdPattern = /^[A-Za-z0-9-]+$/;
 const maxSessions = 16;
 const maxEvents = 120;
+const handoffEventLimit = 1500;
 
 type ContentBlock = {
   type: string;
@@ -36,7 +37,9 @@ type TranscriptLine = {
   cwd?: string;
   gitBranch?: string;
   timestamp?: string;
+  customTitle?: string;
   aiTitle?: string;
+  lastPrompt?: string;
   slug?: string;
   isSidechain?: boolean;
   message?: {
@@ -44,6 +47,15 @@ type TranscriptLine = {
     model?: string;
     content?: string | ContentBlock[];
   };
+};
+
+type LimitState = {
+  kind: 'usage_limit' | 'rate_limit' | 'context_limit' | 'suspected';
+  confidence: 'high' | 'medium' | 'low';
+  evidence: string;
+  detectedAt: number;
+  resetsAt?: number | null;
+  resetText?: string | null;
 };
 
 type MonitorEvent = {
@@ -138,6 +150,122 @@ function resultText(content: unknown): string {
   return content ? JSON.stringify(content) : '';
 }
 
+function resetTextFromLimitMessage(text: string) {
+  return (
+    text.match(/resets?\s+([^·\n]+)/i)?.[1]?.trim() ??
+    text.match(/([오전후]{2}\s*\d{1,2}(?::\d{2})?|\d{1,2}(?::\d{2})?\s*(?:am|pm)?)[^.\n]*재설정/i)?.[0]?.trim() ??
+    null
+  );
+}
+
+function datePartsInZone(ts: number, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ts));
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return { year: value('year'), month: value('month'), day: value('day') };
+}
+
+function parseClaudeResetTime(text: string, detectedAt: number) {
+  const match = text.match(
+    /resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?/i,
+  );
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2] ?? 0);
+  const meridiem = match[3]?.toLowerCase();
+  const timeZone = match[4] || 'Asia/Seoul';
+  if (meridiem === 'pm' && hour < 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+  if (timeZone !== 'Asia/Seoul') return null;
+  const { year, month, day } = datePartsInZone(detectedAt, timeZone);
+  if (!year || !month || !day) return null;
+  let reset = Date.UTC(year, month - 1, day, hour - 9, minute);
+  if (reset <= detectedAt - 60_000) reset += 24 * 60 * 60 * 1000;
+  return reset;
+}
+
+function limitStateFromText(text: string, ts: number): LimitState | null {
+  const evidence = clip(safeText(text), 260);
+  const resetsAt = parseClaudeResetTime(text, ts);
+  const resetText = resetTextFromLimitMessage(text);
+
+  if (/you['’]ve hit your session limit|session limit|usage limit|사용 한도 초과/i.test(text)) {
+    return {
+      kind: 'usage_limit',
+      confidence: 'high',
+      evidence,
+      detectedAt: ts,
+      resetsAt,
+      resetText,
+    };
+  }
+  if (/rate limit|too many requests|temporarily.*request|요청.*제한/i.test(text)) {
+    return {
+      kind: 'rate_limit',
+      confidence: 'high',
+      evidence,
+      detectedAt: ts,
+      resetsAt,
+      resetText,
+    };
+  }
+  if (/context window|context.*limit|context.*exceeded/i.test(text)) {
+    return {
+      kind: 'context_limit',
+      confidence: 'medium',
+      evidence,
+      detectedAt: ts,
+      resetsAt,
+      resetText,
+    };
+  }
+  return null;
+}
+
+function isLimitActive(limitState: LimitState | null) {
+  if (!limitState) return false;
+  if (limitState.resetsAt) return limitState.resetsAt > Date.now();
+  return Date.now() - limitState.detectedAt < 6 * 60 * 60 * 1000;
+}
+
+function limitStateFromLines(lines: TranscriptLine[]) {
+  let latest: LimitState | null = null;
+  for (const line of lines) {
+    const ts = tsOf(line);
+    const stamp = Number.isFinite(ts) ? ts : Date.now();
+    const content = line.message?.content;
+
+    if (line.type === 'assistant' && Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type !== 'text' || !block.text?.trim()) continue;
+        const limitState = limitStateFromText(block.text, stamp);
+        if (limitState) latest = limitState;
+      }
+    }
+
+    if (line.type === 'system') {
+      const raw = JSON.stringify(line);
+      if (/StopFailure|rate limit|usage limit|too many requests|429/i.test(raw)) {
+        latest = {
+          kind: /rate limit|429|too many requests/i.test(raw) ? 'rate_limit' : 'usage_limit',
+          confidence: 'medium',
+          evidence: clip(safeText(raw), 260),
+          detectedAt: stamp,
+          resetsAt: null,
+          resetText: null,
+        };
+      }
+    }
+  }
+  return isLimitActive(latest) ? latest : null;
+}
+
 function isCharacterEvent(event: MonitorEvent) {
   const text = event.text ?? '';
   if (!text.trim()) return false;
@@ -175,7 +303,11 @@ function recentCharacterEvents(events: MonitorEvent[]) {
     }));
 }
 
-function eventsFromLines(lines: TranscriptLine[], sessionId: string): MonitorEvent[] {
+function eventsFromLines(
+  lines: TranscriptLine[],
+  sessionId: string,
+  eventLimit = maxEvents,
+): MonitorEvent[] {
   const events: MonitorEvent[] = [];
   const toolNames = new Map<string, string>();
   let seq = 0;
@@ -221,12 +353,13 @@ function eventsFromLines(lines: TranscriptLine[], sessionId: string): MonitorEve
     } else if (line.type === 'assistant' && Array.isArray(content)) {
       for (const block of content) {
         if (block.type === 'text' && block.text?.trim()) {
+          const limitState = limitStateFromText(block.text, stamp);
           push({
             ts: stamp,
-            kind: 'message',
+            kind: limitState ? 'error' : 'message',
             source: 'assistant',
             agentName: 'Claude Code',
-            channel: 'message',
+            channel: limitState ? 'limit' : 'message',
             text: clip(safeText(block.text)),
           });
         } else if (block.type === 'thinking' && block.thinking?.trim()) {
@@ -253,7 +386,7 @@ function eventsFromLines(lines: TranscriptLine[], sessionId: string): MonitorEve
       }
     }
   }
-  return events.slice(-maxEvents);
+  return events.slice(-eventLimit);
 }
 
 function sessionFromLines(
@@ -263,7 +396,13 @@ function sessionFromLines(
   parentThreadId: string | null = null,
 ) {
   const metaLine = lines.find((line) => line.cwd);
-  const title = lines.filter((line) => line.type === 'ai-title' && line.aiTitle).at(-1)?.aiTitle;
+  const customTitle = lines
+    .filter((line) => line.type === 'custom-title' && line.customTitle)
+    .at(-1)?.customTitle;
+  const lastPrompt = lines
+    .filter((line) => line.type === 'last-prompt' && line.lastPrompt)
+    .at(-1)?.lastPrompt;
+  const aiTitle = lines.filter((line) => line.type === 'ai-title' && line.aiTitle).at(-1)?.aiTitle;
   const slug = lines.find((line) => line.slug)?.slug;
   const isSubagent = parentThreadId !== null;
   const firstUser = lines.find(
@@ -277,16 +416,19 @@ function sessionFromLines(
   const timestamps = lines.map(tsOf).filter((value) => Number.isFinite(value));
   const startedAt = timestamps.length ? Math.min(...timestamps) : mtimeMs;
   const updatedAt = timestamps.length ? Math.max(...timestamps) : mtimeMs;
-  const status = Date.now() - updatedAt < 90_000 ? 'running' : 'idle';
+  const limitState = limitStateFromLines(lines);
+  const status = limitState ? 'limited' : Date.now() - updatedAt < 90_000 ? 'running' : 'idle';
   const recentEvents = recentCharacterEvents(eventsFromLines(lines, sessionId));
+  const displayTitle =
+    customTitle || (lastPrompt ? oneLine(lastPrompt).slice(0, 72) : undefined) || aiTitle;
 
   return {
     id: sessionId,
     source: 'local' as const,
     recentEvents,
     name: isSubagent
-      ? `↳ ${slug || title || firstPrompt || 'subagent'}`
-      : title || firstPrompt || sessionId,
+      ? `↳ ${slug || displayTitle || firstPrompt || 'subagent'}`
+      : displayTitle || firstPrompt || sessionId,
     cwd: metaLine?.cwd ?? '',
     command: [isSubagent ? 'Claude subagent' : 'Claude Code'],
     status,
@@ -300,6 +442,7 @@ function sessionFromLines(
     agentName: isSubagent ? slug || 'subagent' : 'Claude Code',
     agentRole: isSubagent ? slug || 'subagent' : null,
     parentThreadId,
+    limitState,
   };
 }
 
@@ -377,6 +520,7 @@ async function listTranscripts() {
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const eventLimit = url.searchParams.get('full') === '1' ? handoffEventLimit : maxEvents;
     const transcripts = await listTranscripts();
     const sessions = (
       await Promise.all(
@@ -393,7 +537,11 @@ export async function GET(request: Request) {
     const threadId = requested && sessionIdPattern.test(requested) ? requested : sessions[0]?.id;
     const target = threadId ? transcripts.find((item) => item.sessionId === threadId) : undefined;
     const events = target
-      ? eventsFromLines(parseLines(await fs.readFile(target.filePath, 'utf8')), threadId as string)
+      ? eventsFromLines(
+          parseLines(await fs.readFile(target.filePath, 'utf8')),
+          threadId as string,
+          eventLimit,
+        )
       : [];
 
     return NextResponse.json({
@@ -401,6 +549,7 @@ export async function GET(request: Request) {
       threadId,
       sessions,
       events,
+      eventLimit,
       updatedAt: Date.now(),
     });
   } catch (error) {

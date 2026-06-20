@@ -15,33 +15,44 @@ function Messages({
   const { getMessages } = useLocalWorld();
   const messages = getMessages(conversationId);
   if (!messages.length) {
-    return <p className="text-center text-sm text-brown-700">No activity yet.</p>;
+    return (
+      <p className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
+        No activity yet.
+      </p>
+    );
   }
   return (
-    <>
+    <div className="space-y-3">
       {[...messages].reverse().map((message) => (
-        <div className="mb-6 leading-tight" key={message.ts}>
+        <div className="leading-tight" key={message.ts}>
           {message.type === 'responded' ? (
-            <>
-              <div className="flex gap-4">
-                <span className="flex-grow uppercase">{message.fromName}</span>
-                <time dateTime={message.ts.toString()}>
+            <div
+              className={clsx(
+                'rounded-lg border p-3',
+                message.from === currentPlayerId
+                  ? 'border-teal-200 bg-teal-50'
+                  : 'border-slate-200 bg-white',
+              )}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span className="font-semibold uppercase tracking-[0.12em] text-slate-700">
+                  {message.fromName}
+                </span>
+                <time dateTime={message.ts.toString()} className="tabular-nums">
                   {new Date(message.ts).toLocaleString()}
                 </time>
               </div>
-              <div className={clsx('bubble', message.from === currentPlayerId && 'bubble-mine')}>
-                <p className="-mx-3 -my-1 bg-white">{message.content}</p>
-              </div>
-            </>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{message.content}</p>
+            </div>
           ) : (
-            <p className="text-center text-brown-700">
+            <p className="rounded-md bg-slate-100 px-3 py-2 text-center text-xs text-slate-500">
               {message.fromName} {message.type === 'left' ? 'left' : 'started'}
               {' the conversation.'}
             </p>
           )}
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -59,35 +70,41 @@ export default function PlayerDetails({ playerId }: { playerId: LocalId }) {
   if (!playerState) return null;
 
   return (
-    <>
-      <h2 className="p-2 text-center font-display text-4xl tracking-wider text-yellow shadow-solid">
-        {playerState.name}
-      </h2>
-
-      <div className="desc my-4">
-        <p className="-m-4 bg-white text-lg leading-tight text-black">{playerState.identity}</p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
+            {playerState.name.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold text-slate-950">{playerState.name}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{playerState.identity}</p>
+          </div>
+        </div>
       </div>
 
       {sessions.length > 0 && (
-        <div className="my-4 space-y-1">
-          <div className="text-xs uppercase text-brown-700">Sessions ({sessions.length})</div>
+        <div className="mt-5 space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Sessions ({sessions.length})
+          </div>
           {sessions.map((session) => (
             <button
               key={session.id}
               type="button"
               onClick={() => setSelectedConversation(session.conversationId)}
               className={clsx(
-                'pointer-events-auto block w-full border-2 px-2 py-1 text-left leading-tight',
+                'block w-full rounded-lg border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2',
                 activeConversation === session.conversationId
-                  ? 'border-white bg-brown-500 text-white'
-                  : 'border-brown-700 bg-brown-900 text-silver hover:border-silver',
+                  ? 'border-teal-400 bg-teal-50 text-teal-900'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300',
               )}
             >
-              <span className="block truncate text-sm">
+              <span className="block truncate text-sm font-medium">
                 {session.role === 'subagent' ? '↳ ' : ''}
                 {session.name}
               </span>
-              <span className="text-xs uppercase">
+              <span className="mt-1 block text-xs uppercase tracking-[0.12em] text-slate-500">
                 {session.source} · {session.status}
               </span>
             </button>
@@ -96,12 +113,10 @@ export default function PlayerDetails({ playerId }: { playerId: LocalId }) {
       )}
 
       {activeConversation && (
-        <div className="chats">
-          <div className="bg-brown-200 p-2 text-black">
-            <Messages conversationId={activeConversation} currentPlayerId={playerState.id} />
-          </div>
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+          <Messages conversationId={activeConversation} currentPlayerId={playerState.id} />
         </div>
       )}
-    </>
+    </div>
   );
 }

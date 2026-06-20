@@ -4,17 +4,6 @@ import { SelectPlayer } from './Player';
 import { useLocalWorld } from './LocalWorldProvider';
 import { LocalId, LocalPlayerDoc } from '@/lib/localWorld';
 
-const buttonAssetNames = new Set([
-  'Angela',
-  'Dwight',
-  'Jim',
-  'Kevin',
-  'Michael',
-  'Pam',
-  'Stanley',
-  'Toby',
-]);
-
 function initialsFor(name: string) {
   const trimmed = name.trim();
   if (!trimmed) return '?';
@@ -30,15 +19,12 @@ export default function PlayerButton(
     selectPlayer: SelectPlayer;
     selectedPlayer: LocalId | undefined;
   }) {
-  const { getCharacter, getPlayerState } = useLocalWorld();
+  const { getPlayerState } = useLocalWorld();
   const playerState = getPlayerState(player._id);
-  const character = playerState ? getCharacter(playerState.characterId) : undefined;
   const name = playerState?.name ?? player.name;
-  const avatarSrc =
-    character && buttonAssetNames.has(character.name)
-      ? `/assets/${character.name}_button.svg`
-      : null;
   const selected = selectedPlayer === playerState?.id;
+  const active = Boolean(playerState?.thinking || playerState?.motion.type === 'walking');
+  const sessionCount = playerState?.projectSessions?.length ?? 0;
   const handleClick = () => {
     if (playerState) {
       selectPlayer(playerState.id);
@@ -48,36 +34,35 @@ export default function PlayerButton(
   return (
     <button
       type="button"
-      className="button block w-full min-w-0 overflow-hidden pointer-events-auto text-left text-base text-white shadow-solid sm:text-lg"
+      className={clsx(
+        'block w-full min-w-0 rounded-lg border bg-white p-3 text-left transition hover:border-teal-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2',
+        selected ? 'border-teal-500 shadow-sm ring-2 ring-teal-100' : 'border-slate-200',
+        !playerState && 'cursor-not-allowed opacity-60',
+      )}
       onClick={handleClick}
       disabled={!playerState}
       title={name}
       aria-pressed={selected}
     >
-      <div
-        className={clsx(
-          'min-w-0 overflow-hidden px-2 py-1',
-          selected ? 'bg-brown-500' : 'bg-clay-700',
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          {avatarSrc ? (
-            <img
-              className="h-8 w-8 shrink-0"
-              src={avatarSrc}
-              alt=""
-              aria-hidden="true"
-            />
-          ) : (
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center bg-brown-900 text-xs uppercase text-silver"
-              aria-hidden="true"
-            >
-              {initialsFor(name)}
-            </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className={clsx(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+            selected ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600',
           )}
-          <div className="min-w-0 flex-1 truncate">{name}</div>
-        </div>
+          aria-hidden="true"
+        >
+          {initialsFor(name)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-slate-950">{name}</span>
+          <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+            <span
+              className={clsx('h-1.5 w-1.5 rounded-full', active ? 'bg-emerald-500' : 'bg-slate-300')}
+            />
+            {sessionCount > 0 ? `${sessionCount} sessions` : active ? 'Active' : 'Idle'}
+          </span>
+        </span>
       </div>
     </button>
   );

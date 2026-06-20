@@ -1,21 +1,11 @@
 import './globals.css';
-import localFont from 'next/font/local';
-import clsx from 'clsx';
+import { AppPreferencesProvider } from '@/components/AppPreferencesProvider';
 import { LocalWorldProvider } from '@/components/LocalWorldProvider';
 
 export const metadata = {
-  title: 'AI OFFICE',
-  description: 'A virtual office with some familiar characters',
+  title: 'AI Office',
+  description: 'A clean workspace for monitoring local AI agents.',
 };
-
-const fontDisplay = localFont({
-  src: '../../public/assets/fonts/upheaval_pro.ttf',
-  variable: '--font-display',
-});
-const fontBody = localFont({
-  src: '../../public/assets/fonts/vcr_osd_mono.ttf',
-  variable: '--font-body',
-});
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,21 +14,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta content="text/html; charset=UTF-8" name="Content-Type" />
         <meta content="AI Office" property="og:title" />
         <meta
-          content="An office simulatiion with some familiar AI employees..."
+          content="A clean workspace for monitoring local AI agents."
           property="og:description"
         />
         <meta content="https://ai-office.fly.dev/assets/thumbnail.jpg" property="og:image" />
         <meta content="AI Office" property="twitter:title" />
         <meta
-          content="An office simulatiion with some familiar AI employees..."
+          content="A clean workspace for monitoring local AI agents."
           property="twitter:description"
         />
         <meta content="https://ai-office.fly.dev/assets/thumbnail.jpg" property="twitter:image" />
         <meta property="og:type" content="website" />
         <meta content="summary_large_image" name="twitter:card" />
       </head>
-      <body className={clsx(fontDisplay.variable, fontBody.variable)}>
-        <LocalWorldProvider>{children}</LocalWorldProvider>
+      <body>
+        <AppPreferencesProvider>
+          <LocalWorldProvider>{children}</LocalWorldProvider>
+        </AppPreferencesProvider>
       </body>
     </html>
   );

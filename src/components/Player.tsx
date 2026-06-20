@@ -1,5 +1,5 @@
 import { useTick } from '@pixi/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   LocalCharacter,
   LocalId,
@@ -27,15 +27,21 @@ export const Player = ({
   tileDim: number;
   onClick: SelectPlayer;
 }) => {
-  const [pose, setPose] = useState<Pose>();
+  const [pose, setPose] = useState<Pose>(() => getPoseFromMotion(playerState.motion, Date.now() + offset));
   const time = useRef(0);
+  const [hasTicked, setHasTicked] = useState(false);
   useTick(() => {
     time.current = Date.now() + offset;
     if (!playerState) return;
     if (!time.current) return;
     const pose = getPoseFromMotion(playerState.motion, time.current);
     setPose(pose);
+    setHasTicked(true);
   });
+  useEffect(() => {
+    if (hasTicked) return;
+    setPose(getPoseFromMotion(playerState.motion, Date.now() + offset));
+  }, [hasTicked, offset, playerState.motion]);
   if (!playerState || !character) return null;
   if (!pose) return null;
   const baseX = pose.position.x * tileDim + tileDim / 2;

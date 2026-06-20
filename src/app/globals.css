@@ -3,116 +3,109 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  color-scheme: light;
+  --app-background: #f8fafc;
+  --app-foreground: #0f172a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  height: 100%;
+  background: var(--app-background);
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb)))
-    rgb(var(--background-start-rgb));
+  min-height: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--app-background);
+  color: var(--app-foreground);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(20, 184, 166, 0.22);
 }
 
 .game-background {
-  background: linear-gradient(rgba(41, 41, 41, 0.8), rgba(41, 41, 41, 0.8)),
-    url(../../assets/office-animation-bg.png);
-  background-blend-mode: hard-light;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-attachment: fixed;
+  background: var(--app-background);
 }
 
 .game-title {
-  background: linear-gradient(to bottom, #ffffff, #ffffff);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0px 0.08em 0px #0c0c0c);
+  color: var(--app-foreground);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  filter: none;
 }
 
-.game-frame {
-  border-width: 36px;
-  border-image-source: url(../../assets/ui/frame.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 25%;
-}
-
-@media screen and (min-width: 640px) {
-  .game-frame {
-    border-width: 48px;
-  }
+.game-frame,
+.box,
+.desc,
+.chats,
+.login-prompt {
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: white;
 }
 
 .shadow-solid {
-  text-shadow: 0 0.1em 0 rgba(0, 0, 0, 0.5);
+  text-shadow: none;
 }
 
-.bubble {
-  border-width: 30px;
-  border-image-source: url(../../assets/ui/bubble-left.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 20%;
-}
-
+.bubble,
 .bubble-mine {
-  border-image-source: url(../../assets/ui/bubble-right.svg);
-}
-
-.box {
-  border-width: 12px;
-  border-image-source: url(../../assets/ui/box.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 12.5%;
-}
-
-.desc {
-  border-width: 56px;
-  border-image-source: url(../../assets/ui/desc.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 28%;
-}
-
-.chats {
-  border-width: 24px;
-  border-image-source: url(../../assets/ui/chats.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 40%;
-}
-
-.login-prompt {
-  border-width: 48px;
-  border-image-source: url(../../assets/ui/jewel_box.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 40%;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  background: white;
 }
 
 .button {
-  border-width: 1em;
-  border-image-source: url(../../assets/ui/button.svg);
-  border-image-repeat: stretch;
-  border-image-slice: 25%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 8px;
+  background: #0f172a;
+  padding: 0.625rem 1rem;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.button:hover {
+  background: #1e293b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .button span {
-  display: inline-block;
-  transform: translateY(-15%);
+  display: inline-flex;
+  align-items: center;
+  transform: none;
 }
 
-.button:active {
-  /* Inlining this image to avoid flashing during loading */
-  border-image-source: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='2' width='14' height='13' fill='%23181425'/%3E%3Crect x='2' y='1' width='12' height='15' fill='%23181425'/%3E%3Crect y='3' width='16' height='11' fill='%23181425'/%3E%3Crect x='2' y='14' width='12' height='1' fill='%23262B44'/%3E%3Crect x='1' y='3' width='14' height='11' fill='%233A4466'/%3E%3Crect x='2' y='2' width='12' height='9' fill='%233A4466'/%3E%3Crect x='1' y='13' width='1' height='1' fill='%23262B44'/%3E%3Crect x='14' y='13' width='1' height='1' fill='%23262B44'/%3E%3C/svg%3E%0A");
-}
-
+.button:active,
 .button:active span {
   transform: none;
 }

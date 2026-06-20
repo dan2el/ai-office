@@ -339,7 +339,7 @@ export type AgentEvent = {
 
 export type AgentSession = {
   id: string;
-  source: 'codex' | 'claude';
+  source: 'codex' | 'claude' | 'cursor';
   name: string;
   status: string;
   updatedAt: number;
@@ -386,7 +386,9 @@ function eventFromName(event: AgentEvent, session: AgentSession) {
   if (event.source === 'user') return 'You';
   if (event.source === 'tool') return event.channel?.toUpperCase() ?? 'Tool';
   if (event.source === 'subagent') return 'Subagent';
-  return session.source === 'claude' ? 'Claude' : 'Codex';
+  if (session.source === 'claude') return 'Claude';
+  if (session.source === 'cursor') return 'Cursor';
+  return 'Codex';
 }
 
 function eventToMessage(event: AgentEvent, playerId: LocalId, session: AgentSession): LocalMessage {
@@ -466,45 +468,8 @@ export function createLocalWorld(
   };
 
   if (agentSessions.length === 0) {
-    // No live agent sessions yet — fall back to the seeded demo office.
-    const messages = makeMessages(localStartTs);
-    const latestMessageByPlayer = new Map<LocalId, LocalMessage>();
-    for (const message of messages) {
-      latestMessageByPlayer.set(message.from, message);
-      for (const recipient of message.to) {
-        latestMessageByPlayer.set(recipient, message);
-      }
-    }
-    const playerStates = Object.fromEntries(
-      Descriptions.map((description, index) => {
-        const playerId = playerIdsByName[description.name];
-        const lastMessage = latestMessageByPlayer.get(playerId);
-        return [
-          playerId,
-          {
-            id: playerId,
-            name: description.name,
-            agentId: `local:agent:${description.name}`,
-            characterId: characterIdsByName[description.character],
-            identity: identityFor(description.name),
-            motion: motionFor(description.position ?? { x: 1, y: 1 + index }, index, now),
-            thinking: index % 3 === 0,
-            lastPlan: {
-              plan: 'Keep the local AI Office running without Convex.',
-              ts: localStartTs - 60_000,
-            },
-            lastChat: lastMessage ? { message: lastMessage, conversationId } : undefined,
-          },
-        ];
-      }),
-    );
-    return {
-      ...worldShell,
-      players: demoPlayers,
-      playerStates,
-      messages: { [conversationId]: messages },
-      teams: [],
-    };
+    // No live sessions yet — render an empty office (no demo characters).
+    return { ...worldShell, players: [], playerStates: {}, messages: {}, teams: [] };
   }
 
   // Live mode: each project (cwd) is a team in its own area; every session and
